@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "224693126196",
+    "project_id": "pikzen-mobile-app",
+    "storage_bucket": "pikzen-mobile-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224693126196:android:d358bc4d84aace0eecb661",
+        "android_client_info": {
+          "package_name": "com.example.pikzen"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrrqZE7i8np0ZMUEfGvS0v4E-9vmtjKLQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
