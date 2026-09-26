@@ -12,7 +12,20 @@
           "package_name": "com.example.pikzen"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "224693126196-lql8vbahh9kqad1arsfc5ft5bsatc8h0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pikzen",
+            "certificate_hash": "2b05287041551af21f1f58dd1fda55c4c109518f"
+          }
+        },
+        {
+          "client_id": "224693126196-krp0obn7o2b55odv60o89nqnio6a1m0d.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBrrqZE7i8np0ZMUEfGvS0v4E-9vmtjKLQ"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "224693126196-krp0obn7o2b55odv60o89nqnio6a1m0d.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

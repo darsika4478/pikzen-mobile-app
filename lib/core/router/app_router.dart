@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
+import '../../features/auth/providers/auth_provider.dart';
 
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -31,9 +34,24 @@ import '../../features/shop_management/screens/shop_dashboard_screen.dart';
 import '../../shared/screens/onboarding_screen.dart';
 import '../../shared/screens/splash_screen.dart';
 
-// Temporary testing navigation. No authentication checks are performed.
+// Shared routes. Shop access requires an approved authenticated profile.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
+  redirect: (context, state) {
+    const shopPaths = {
+      '/shop-dashboard',
+      '/add-edit-product',
+      '/incoming-orders',
+      '/inventory',
+      '/prepare-order',
+      '/product-management',
+    };
+    if (shopPaths.contains(state.uri.path)) {
+      final auth = context.read<AuthProvider>();
+      if (auth.user?.isApprovedShop != true) return '/login';
+    }
+    return null;
+  },
   routes: [
     ShellRoute(
       builder: (context, state, child) =>
