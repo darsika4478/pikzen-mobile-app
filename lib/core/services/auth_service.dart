@@ -59,6 +59,7 @@ class AuthService {
         role: result.role,
         approvalStatus: result.approvalStatus,
         createdAt: result.createdAt,
+        accountStatus: result.accountStatus,
       );
     }
     return result;

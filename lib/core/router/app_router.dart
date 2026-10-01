@@ -1,6 +1,10 @@
+import '../../features/cart_checkout/widgets/cart_badge.dart';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+
+import '../../features/admin/screens/admin_users_screen.dart';
 
 import '../../features/auth/providers/auth_provider.dart';
 
@@ -41,7 +45,7 @@ import '../../models/notification_model.dart';
 import '../../shared/screens/onboarding_screen.dart';
 import '../../shared/screens/splash_screen.dart';
 
-// Shared routes. Shop access requires an approved authenticated profile.
+// Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
   redirect: (context, state) {
@@ -53,6 +57,10 @@ final GoRouter appRouter = GoRouter(
       '/prepare-order',
       '/product-management',
     };
+    if (state.uri.path == '/admin/users' &&
+        context.read<AuthProvider>().user?.role != 'admin') {
+      return '/login';
+    }
     if (shopPaths.contains(state.uri.path)) {
       final auth = context.read<AuthProvider>();
       if (auth.user?.isApprovedShop != true) return '/login';
@@ -65,6 +73,14 @@ final GoRouter appRouter = GoRouter(
           _CustomerNavigationShell(location: state.uri.path, child: child),
       routes: [
         GoRoute(
+          path: '/search',
+          name: 'search',
+          builder: (context, state) => SearchScreen(
+            query: state.uri.queryParameters['q'] ?? '',
+            category: state.uri.queryParameters['category'],
+          ),
+        ),
+        GoRoute(
           path: '/customer-home',
           name: 'customer-home',
           builder: (context, state) => const CustomerHomeScreen(),
@@ -72,12 +88,22 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '/categories',
           name: 'categories',
-          builder: (context, state) => const CategoriesScreen(),
+          redirect: (context, state) =>
+              state.uri.queryParameters['category'] == null
+              ? null
+              : Uri(
+                  path: '/search',
+                  queryParameters: {
+                    'category': state.uri.queryParameters['category']!,
+                  },
+                ).toString(),
+          builder: (context, state) =>
+              CategoriesScreen(category: state.uri.queryParameters['category']),
         ),
         GoRoute(
-          path: '/search',
-          name: 'search',
-          builder: (context, state) => const SearchScreen(),
+          path: '/cart',
+          name: 'cart',
+          builder: (context, state) => const CartScreen(),
         ),
         GoRoute(
           path: '/favourites',
@@ -114,6 +140,11 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
+    GoRoute(
+      path: '/admin/users',
+      name: 'admin-users',
+      builder: (context, state) => const AdminUsersScreen(),
+    ),
     GoRoute(path: '/', redirect: (context, state) => '/splash'),
     GoRoute(
       path: '/forgot-password',
@@ -129,11 +160,6 @@ final GoRouter appRouter = GoRouter(
       path: '/signup',
       name: 'signup',
       builder: (context, state) => const SignUpScreen(),
-    ),
-    GoRoute(
-      path: '/cart',
-      name: 'cart',
-      builder: (context, state) => const CartScreen(),
     ),
     GoRoute(
       path: '/checkout',
@@ -256,19 +282,18 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-
     GoRoute(
       path: '/product-details',
       name: 'product-details',
-      builder: (context, state) => const ProductDetailsScreen(),
+      builder: (context, state) => ProductDetailsScreen(
+        productId: state.uri.queryParameters['id'] ?? '',
+      ),
     ),
-
     GoRoute(
       path: '/edit-profile',
       name: 'edit-profile',
       builder: (context, state) => const EditProfileScreen(),
     ),
-
     GoRoute(
       path: '/settings',
       name: 'settings',
@@ -327,7 +352,7 @@ class _CustomerNavigationShell extends StatelessWidget {
   static const _paths = [
     '/customer-home',
     '/categories',
-    '/search',
+    '/cart',
     '/favourites',
     '/profile',
   ];
@@ -346,7 +371,7 @@ class _CustomerNavigationShell extends StatelessWidget {
             icon: Icon(Icons.category_outlined),
             label: 'Categories',
           ),
-          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+          NavigationDestination(icon: CartBadge(), label: 'Cart'),
           NavigationDestination(
             icon: Icon(Icons.favorite_outline),
             label: 'Favourites',

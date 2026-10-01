@@ -44,7 +44,7 @@ void main() {
       final auth = AuthProvider(service: service, restore: false);
       auth.setRemember(true);
       final ok = await auth.signIn('alex@example.com', 'password123');
-      expect(ok, role != 'admin');
+      expect(ok, isTrue);
       expect(service.rememberedValue, isTrue);
       expect(
         auth.destination,
@@ -52,7 +52,7 @@ void main() {
             ? 'customer-home'
             : role == 'shop'
             ? 'shop-dashboard'
-            : null,
+            : 'admin-users',
       );
       if (role != 'admin') {
         expect(await auth.google(), isTrue);

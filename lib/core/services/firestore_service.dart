@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../models/user_model.dart';
+import '../../models/product_model.dart';
 
 class FirestoreService {
   FirestoreService({this._database});
@@ -11,6 +12,24 @@ class FirestoreService {
     final doc = await database.collection('users').doc(uid).get();
     return doc.exists ? UserModel.fromMap(doc.id, doc.data()!) : null;
   }
+
+  Stream<List<ProductModel>> products() => database
+      .collection('products')
+      .snapshots()
+      .map(
+        (snapshot) => snapshot.docs
+            .map((doc) => ProductModel.fromMap(doc.id, doc.data()))
+            .toList(),
+      );
+
+  Stream<List<UserModel>> users() => database
+      .collection('users')
+      .snapshots()
+      .map(
+        (snapshot) => snapshot.docs
+            .map((doc) => UserModel.fromMap(doc.id, doc.data()))
+            .toList(),
+      );
 
   /// Public registration cannot supply an admin role or an approval decision.
   static Map<String, dynamic> registrationData({
@@ -62,6 +81,37 @@ class FirestoreService {
     await database.runTransaction((transaction) async {
       final existing = await transaction.get(ref);
       if (!existing.exists) transaction.set(ref, data);
+    });
+  }
+
+  /// Future Admin UI integration. Firestore rules require an authenticated admin.
+  Stream<List<UserModel>> pendingShops() => database
+      .collection('users')
+      .where('role', isEqualTo: 'shop')
+      .where('approvalStatus', isEqualTo: 'pending')
+      .snapshots()
+      .map(
+        (snapshot) => snapshot.docs
+            .map((doc) => UserModel.fromMap(doc.id, doc.data()))
+            .toList(),
+      );
+
+  Future<void> reviewShop(
+    String shopUid, {
+    required String approvalStatus,
+  }) async {
+    if (!['approved', 'rejected'].contains(approvalStatus)) {
+      throw ArgumentError('Choose approved or rejected.');
+    }
+    final ref = database.collection('users').doc(shopUid);
+    await database.runTransaction((transaction) async {
+      final doc = await transaction.get(ref);
+      if (!doc.exists ||
+          doc.data()?['role'] != 'shop' ||
+          doc.data()?['approvalStatus'] != 'pending') {
+        throw StateError('Only pending shop accounts can be reviewed.');
+      }
+      transaction.update(ref, {'approvalStatus': approvalStatus});
     });
   }
 }
