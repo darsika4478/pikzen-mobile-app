@@ -3,8 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../models/order_model.dart';
-
-enum _PaymentMethod { card, eWallet, onlineBanking, cashOnPickup }
+import '../../../models/payment_model.dart';
 
 class PaymentMethodScreen extends StatefulWidget {
   const PaymentMethodScreen({
@@ -27,47 +26,34 @@ class PaymentMethodScreen extends StatefulWidget {
 }
 
 class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
-  late _PaymentMethod _selectedMethod;
+  late PaymentMethod _selectedMethod;
+
+  PaymentCheckoutData get _checkout => PaymentCheckoutData(
+    amountMinor: widget.amountMinor,
+    currencyCode: widget.currencyCode,
+    orderId: widget.orderId,
+    orderDraft: widget.orderDraft,
+  );
 
   @override
   void initState() {
     super.initState();
-    _selectedMethod = _PaymentMethod.values.firstWhere(
-      (method) => method.name == widget.selectedMethod,
-      orElse: () => _PaymentMethod.card,
-    );
+    _selectedMethod = PaymentMethod.fromValue(widget.selectedMethod);
   }
 
-  void _continue() {
-    switch (_selectedMethod) {
-      case _PaymentMethod.cashOnPickup:
-        context.pushNamed('order-confirmation', extra: widget.orderDraft);
-        break;
-      case _PaymentMethod.card:
-        context.pushNamed(
-          'card-payment',
-          extra: {
-            'amountMinor': widget.amountMinor,
-            'currencyCode': widget.currencyCode,
-            'orderId': widget.orderId,
-            'paymentMethod': _selectedMethod.name,
-            'orderDraft': widget.orderDraft,
-          },
-        );
-        break;
-      case _PaymentMethod.eWallet:
-        _showUnavailableMessage('e-Wallet payment');
-        break;
-      case _PaymentMethod.onlineBanking:
-        _showUnavailableMessage('Online banking');
-        break;
+  @override
+  void didUpdateWidget(covariant PaymentMethodScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedMethod != widget.selectedMethod) {
+      _selectedMethod = PaymentMethod.fromValue(widget.selectedMethod);
     }
   }
 
-  void _showUnavailableMessage(String feature) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$feature is not available yet.')));
+  void _continue() {
+    context.pushNamed(
+      _selectedMethod.routeName,
+      extra: _checkout.toExtra(_selectedMethod),
+    );
   }
 
   @override
@@ -107,7 +93,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                       style: textTheme.titleMedium,
                     ),
                     const SizedBox(height: 16),
-                    ..._PaymentMethod.values.map(
+                    ...PaymentMethod.values.map(
                       (method) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _PaymentMethodCard(
@@ -127,10 +113,13 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                           color: AppColors.primary,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          '256-bit encrypted secure checkout',
-                          style: textTheme.bodySmall?.copyWith(
-                            color: AppColors.secondaryText,
+                        Flexible(
+                          child: Text(
+                            'Demo checkout. No real payment is made.',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: AppColors.secondaryText,
+                            ),
                           ),
                         ),
                       ],
@@ -169,7 +158,7 @@ class _PaymentMethodCard extends StatelessWidget {
     required this.onTap,
   });
 
-  final _PaymentMethod method;
+  final PaymentMethod method;
   final bool selected;
   final VoidCallback onTap;
 
@@ -177,22 +166,22 @@ class _PaymentMethodCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final (icon, title, subtitle) = switch (method) {
-      _PaymentMethod.card => (
+      PaymentMethod.card => (
         Icons.credit_card_outlined,
         'Credit / Debit Card',
         'Recommended',
       ),
-      _PaymentMethod.eWallet => (
+      PaymentMethod.ewallet => (
         Icons.account_balance_wallet_outlined,
         'e-Wallet',
-        'Touch ’n Go, GrabPay, Boost',
+        'Sri Lanka sample wallets · Demo only',
       ),
-      _PaymentMethod.onlineBanking => (
+      PaymentMethod.onlineBanking => (
         Icons.account_balance_outlined,
         'Online Banking',
-        'FPX Direct Bank Transfer',
+        'Sri Lanka sample banks · Demo only',
       ),
-      _PaymentMethod.cashOnPickup => (
+      PaymentMethod.cashOnPickup => (
         Icons.payments_outlined,
         'Cash on Pickup',
         'Pay counter upon collection',

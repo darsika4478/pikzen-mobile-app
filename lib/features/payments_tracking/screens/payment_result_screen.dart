@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../models/order_model.dart';
+import '../../../models/payment_model.dart';
 
 class PaymentResultScreen extends StatelessWidget {
   const PaymentResultScreen({
@@ -12,6 +13,8 @@ class PaymentResultScreen extends StatelessWidget {
     this.currencyCode = 'LKR',
     this.isDemo = true,
     this.order,
+    this.paymentMethod = 'card',
+    this.paymentStatus,
   });
 
   /// Provided by order placement when it exists; this screen never creates one.
@@ -22,6 +25,8 @@ class PaymentResultScreen extends StatelessWidget {
   final String currencyCode;
   final bool isDemo;
   final OrderModel? order;
+  final String paymentMethod;
+  final String? paymentStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +38,13 @@ class PaymentResultScreen extends StatelessWidget {
         : safeOrderId;
     final resolvedAmount = order?.effectiveTotalMinor ?? amountMinor;
     final resolvedCurrency = order?.effectiveCurrencyCode ?? currencyCode;
+    final method = PaymentMethod.fromValue(
+      order?.paymentMethod ?? paymentMethod,
+    );
+    final cash = method == PaymentMethod.cashOnPickup;
     final displayAmount = resolvedAmount == null
         ? 'Not available'
-        : _formatAmount(resolvedAmount, resolvedCurrency);
+        : formatPaymentAmount(resolvedAmount, resolvedCurrency);
 
     return PopScope<Object?>(
       canPop: false,
@@ -71,7 +80,11 @@ class PaymentResultScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Payment Successful!',
+                      cash
+                          ? (hasOrderId
+                                ? 'Order placed successfully.'
+                                : 'Demo order confirmed')
+                          : 'Payment Successful!',
                       textAlign: TextAlign.center,
                       style: textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w700,
@@ -89,7 +102,9 @@ class PaymentResultScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: Text(
-                        isDemo
+                        cash
+                            ? 'Payment due at pickup'
+                            : isDemo
                             ? 'Demo payment complete'
                             : 'Order placed successfully',
                         style: textTheme.bodySmall?.copyWith(
@@ -101,15 +116,20 @@ class PaymentResultScreen extends StatelessWidget {
                     const SizedBox(height: 30),
                     _OrderInformationCard(
                       orderId: displayOrderId,
-                      amountLabel: isDemo ? 'Order Total' : 'Amount Paid',
+                      amountLabel: cash ? 'Amount Due' : 'Order Total',
                       amount: displayAmount,
+                      paymentMethod: method.label,
                       textTheme: textTheme,
                     ),
                     if (isDemo) ...[
                       const SizedBox(height: 14),
                       Text(
-                        !hasOrderId
-                            ? 'Prototype only. No charge was processed, and order creation is not implemented yet.'
+                        cash
+                            ? (!hasOrderId
+                                  ? 'Demo only. No order was saved and no payment was collected. Pay at the pickup counter when collecting your order.'
+                                  : 'Pay at the pickup counter when collecting your order. No payment was collected now.')
+                            : !hasOrderId
+                            ? 'Prototype only. No real charge was processed. Checkout details were not supplied, so no order was saved.'
                             : 'Prototype only. No real charge was processed.',
                         textAlign: TextAlign.center,
                         style: textTheme.bodySmall?.copyWith(
@@ -117,6 +137,14 @@ class PaymentResultScreen extends StatelessWidget {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => context.goNamed('my-orders'),
+                        child: const Text('View My Orders'),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -126,17 +154,6 @@ class PaymentResultScreen extends StatelessWidget {
       ),
     );
   }
-
-  static String _formatAmount(int amountMinor, String currencyCode) {
-    final amount = amountMinor.abs();
-    final whole = (amount ~/ 100).toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (_) => ',',
-    );
-    final sign = amountMinor < 0 ? '-' : '';
-    final fraction = (amount % 100).toString().padLeft(2, '0');
-    return '$currencyCode $sign$whole.$fraction';
-  }
 }
 
 class _OrderInformationCard extends StatelessWidget {
@@ -144,12 +161,14 @@ class _OrderInformationCard extends StatelessWidget {
     required this.orderId,
     required this.amountLabel,
     required this.amount,
+    required this.paymentMethod,
     required this.textTheme,
   });
 
   final String orderId;
   final String amountLabel;
   final String amount;
+  final String paymentMethod;
   final TextTheme textTheme;
 
   @override
@@ -185,6 +204,15 @@ class _OrderInformationCard extends StatelessWidget {
             value: amount,
             textTheme: textTheme,
             emphasizeValue: true,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Divider(height: 1),
+          ),
+          _InformationRow(
+            label: 'Payment Method',
+            value: paymentMethod,
+            textTheme: textTheme,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),

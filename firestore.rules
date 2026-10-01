@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function validPaymentMethod(method) {
-      return method in ['card', 'cashOnPickup'];
+      return method in ['card', 'ewallet', 'onlineBanking', 'cashOnPickup'];
     }
 
     function validOrderStatus(status) {
@@ -136,7 +136,7 @@ service cloud.firestore {
         && request.resource.data.totalMinor >= 0
         && request.resource.data.currencyCode is string
         && validPaymentMethod(request.resource.data.paymentMethod)
-        && ((request.resource.data.paymentMethod == 'card'
+        && ((request.resource.data.paymentMethod in ['card', 'ewallet', 'onlineBanking']
               && request.resource.data.paymentStatus == 'demo')
           || (request.resource.data.paymentMethod == 'cashOnPickup'
               && request.resource.data.paymentStatus == 'unpaid'))

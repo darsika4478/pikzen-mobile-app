@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../../models/order_model.dart';
+import '../../../models/payment_model.dart';
 
 class PaymentFailureScreen extends StatelessWidget {
   const PaymentFailureScreen({
@@ -24,27 +25,23 @@ class PaymentFailureScreen extends StatelessWidget {
   final String? orderId;
   final OrderModel? orderDraft;
 
-  Map<String, Object?> get _safeCheckoutData => {
-    'paymentMethod': paymentMethod,
-    'selectedMethod': paymentMethod,
-    'amountMinor': amountMinor,
-    'currencyCode': currencyCode,
-    'orderId': orderId,
-    'orderDraft': orderDraft,
-  };
+  PaymentMethod get _method => PaymentMethod.fromValue(paymentMethod);
 
-  String get _returnRoute =>
-      paymentMethod == 'card' ? 'card-payment' : 'payment-method';
+  Map<String, Object?> get _safeCheckoutData => PaymentCheckoutData(
+    amountMinor: amountMinor,
+    currencyCode: currencyCode,
+    orderId: orderId,
+    orderDraft: orderDraft,
+  ).toExtra(_method);
+
+  String get _returnRoute => _method.routeName;
 
   void _returnToPreviousPaymentStep(BuildContext context) {
     context.goNamed(_returnRoute, extra: _safeCheckoutData);
   }
 
   void _tryAgain(BuildContext context) {
-    context.goNamed(
-      paymentMethod == 'card' ? 'card-payment' : 'payment-method',
-      extra: _safeCheckoutData,
-    );
+    context.goNamed(_returnRoute, extra: _safeCheckoutData);
   }
 
   void _chooseAnotherMethod(BuildContext context) {

@@ -23,6 +23,7 @@ import '../../features/payments_tracking/screens/notification_detail_screen.dart
 import '../../features/payments_tracking/screens/order_history_screen.dart';
 import '../../features/payments_tracking/screens/order_tracking_screen.dart';
 import '../../features/payments_tracking/screens/card_payment_screen.dart';
+import '../../features/payments_tracking/screens/payment_selection_screen.dart';
 import '../../features/payments_tracking/screens/payment_failure_screen.dart';
 import '../../features/payments_tracking/screens/payment_method_screen.dart';
 import '../../features/payments_tracking/screens/payment_result_screen.dart';
@@ -42,6 +43,7 @@ import '../../features/shop_management/screens/product_management_screen.dart';
 import '../../features/shop_management/screens/shop_dashboard_screen.dart';
 import '../../models/order_model.dart';
 import '../../models/notification_model.dart';
+import '../../models/payment_model.dart';
 import '../../shared/screens/onboarding_screen.dart';
 import '../../shared/screens/splash_screen.dart';
 
@@ -169,11 +171,15 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/order-confirmation',
       name: 'order-confirmation',
-      builder: (context, state) => OrderConfirmationScreen(
-        orderDraft: state.extra is OrderModel
-            ? state.extra as OrderModel
-            : null,
-      ),
+      builder: (context, state) {
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
+        return OrderConfirmationScreen(
+          orderDraft: checkout.orderDraft,
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+        );
+      },
     ),
     GoRoute(
       path: '/pickup-date',
@@ -211,17 +217,14 @@ final GoRouter appRouter = GoRouter(
       name: 'payment-method',
       builder: (context, state) {
         final args = state.extra is Map ? state.extra as Map : const {};
-        final amountMinor = args['amountMinor'];
-        final currencyCode = args['currencyCode'];
-        final orderId = args['orderId'];
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
         final selectedMethod = args['selectedMethod'];
-        final orderDraft = args['orderDraft'];
         return PaymentMethodScreen(
-          amountMinor: amountMinor is int ? amountMinor : null,
-          currencyCode: currencyCode is String ? currencyCode : 'LKR',
-          orderId: orderId is String ? orderId : null,
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
           selectedMethod: selectedMethod is String ? selectedMethod : 'card',
-          orderDraft: orderDraft is OrderModel ? orderDraft : null,
+          orderDraft: checkout.orderDraft,
         );
       },
     ),
@@ -229,20 +232,30 @@ final GoRouter appRouter = GoRouter(
       path: '/card-payment',
       name: 'card-payment',
       builder: (context, state) {
-        final args = state.extra is Map ? state.extra as Map : const {};
-        final amountMinor = args['amountMinor'];
-        final currencyCode = args['currencyCode'];
-        final orderId = args['orderId'];
-        final paymentMethod = args['paymentMethod'];
-        final orderDraft = args['orderDraft'];
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
         return CardPaymentScreen(
-          amountMinor: amountMinor is int ? amountMinor : null,
-          currencyCode: currencyCode is String ? currencyCode : 'LKR',
-          orderId: orderId is String ? orderId : null,
-          paymentMethod: paymentMethod is String ? paymentMethod : 'card',
-          orderDraft: orderDraft is OrderModel ? orderDraft : null,
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+          orderDraft: checkout.orderDraft,
         );
       },
+    ),
+    GoRoute(
+      path: '/ewallet-payment',
+      name: 'ewallet-payment',
+      builder: (context, state) => DemoPaymentSelectionScreen(
+        method: PaymentMethod.ewallet,
+        checkout: PaymentCheckoutData.fromExtra(state.extra),
+      ),
+    ),
+    GoRoute(
+      path: '/online-banking-payment',
+      name: 'online-banking-payment',
+      builder: (context, state) => DemoPaymentSelectionScreen(
+        method: PaymentMethod.onlineBanking,
+        checkout: PaymentCheckoutData.fromExtra(state.extra),
+      ),
     ),
     GoRoute(
       path: '/payment-result',
@@ -254,12 +267,16 @@ final GoRouter appRouter = GoRouter(
         final currencyCode = args['currencyCode'];
         final isDemo = args['isDemo'];
         final order = args['order'];
+        final paymentMethod = args['paymentMethod'];
+        final paymentStatus = args['paymentStatus'];
         return PaymentResultScreen(
           orderId: orderId is String ? orderId : null,
           amountMinor: amountMinor is int ? amountMinor : null,
           currencyCode: currencyCode is String ? currencyCode : 'LKR',
           isDemo: isDemo is bool ? isDemo : true,
           order: order is OrderModel ? order : null,
+          paymentMethod: paymentMethod is String ? paymentMethod : 'card',
+          paymentStatus: paymentStatus is String ? paymentStatus : null,
         );
       },
     ),
@@ -268,17 +285,14 @@ final GoRouter appRouter = GoRouter(
       name: 'payment-failure',
       builder: (context, state) {
         final args = state.extra is Map ? state.extra as Map : const {};
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
         final paymentMethod = args['paymentMethod'];
-        final amountMinor = args['amountMinor'];
-        final currencyCode = args['currencyCode'];
-        final orderId = args['orderId'];
-        final orderDraft = args['orderDraft'];
         return PaymentFailureScreen(
           paymentMethod: paymentMethod is String ? paymentMethod : 'card',
-          amountMinor: amountMinor is int ? amountMinor : null,
-          currencyCode: currencyCode is String ? currencyCode : 'LKR',
-          orderId: orderId is String ? orderId : null,
-          orderDraft: orderDraft is OrderModel ? orderDraft : null,
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+          orderDraft: checkout.orderDraft,
         );
       },
     ),
