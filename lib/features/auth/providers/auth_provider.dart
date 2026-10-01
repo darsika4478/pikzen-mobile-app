@@ -23,8 +23,8 @@ class AuthProvider extends ChangeNotifier {
     return name.isEmpty ? null : name.split(RegExp(r'\s+')).first;
   }
 
-  // Reserved integration point until the Admin workspace is included.
-  static const String? adminRoute = null;
+  // One common login, with a protected Admin/User Management destination.
+  static const String adminRoute = 'admin-users';
   String? get destination => switch (user?.role) {
     'customer' => 'customer-home',
     'shop' => user!.isApprovedShop ? 'shop-dashboard' : null,
