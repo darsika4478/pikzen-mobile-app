@@ -94,13 +94,18 @@ class OrderService {
     if (draft.items.isEmpty) {
       throw const OrderActionException('This order has no items.');
     }
-    if (!const {'card', 'cashOnPickup'}.contains(paymentMethod)) {
+    if (!const {
+      'card',
+      'ewallet',
+      'onlineBanking',
+      'cashOnPickup',
+    }.contains(paymentMethod)) {
       throw const OrderActionException('This payment method is not supported.');
     }
     if (!const {'demo', 'unpaid'}.contains(paymentStatus)) {
       throw const OrderActionException('This payment status is not supported.');
     }
-    if ((paymentMethod == 'card' && paymentStatus != 'demo') ||
+    if ((paymentMethod != 'cashOnPickup' && paymentStatus != 'demo') ||
         (paymentMethod == 'cashOnPickup' && paymentStatus != 'unpaid')) {
       throw const OrderActionException(
         'The payment state does not match the method.',

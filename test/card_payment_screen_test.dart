@@ -87,10 +87,10 @@ void main() {
     testWidgets('holder name, MM/YY, and 3-digit CVV are required', (
       tester,
     ) async {
-      final router = _router();
+      final router = _router(initialLocation: '/card-payment');
       addTearDown(router.dispose);
 
-      await tester.pumpWidget(_app(_router(initialLocation: '/card-payment')));
+      await tester.pumpWidget(_app(router));
       await tester.tap(find.text('Pay LKR 2,450.00'));
       await tester.pumpAndSettle();
 

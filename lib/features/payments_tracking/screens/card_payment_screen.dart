@@ -3,8 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/services/order_service.dart';
+import '../../../core/services/payment_service.dart';
 import '../../../models/order_model.dart';
+import '../../../models/payment_model.dart';
 import '../../../shared/widgets/primary_button.dart';
 
 class CardPaymentScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class CardPaymentScreen extends StatefulWidget {
     this.orderId,
     this.paymentMethod = 'card',
     this.orderDraft,
+    this.demoPayments,
   });
 
   /// Optional order total in the currency's smallest unit, passed by checkout.
@@ -23,6 +25,7 @@ class CardPaymentScreen extends StatefulWidget {
   final String? orderId;
   final String paymentMethod;
   final OrderModel? orderDraft;
+  final DemoPaymentService? demoPayments;
 
   @override
   State<CardPaymentScreen> createState() => _CardPaymentScreenState();
@@ -39,6 +42,26 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   final _expiryFocus = FocusNode();
   final _cvvFocus = FocusNode();
   bool _submitting = false;
+  late final _payments = widget.demoPayments ?? DemoPaymentService();
+
+  PaymentCheckoutData get _checkout => PaymentCheckoutData(
+    amountMinor: widget.amountMinor,
+    currencyCode: widget.currencyCode,
+    orderId: widget.orderId,
+    orderDraft: widget.orderDraft,
+  );
+
+  void _back() {
+    if (_submitting) return;
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.goNamed(
+        'payment-method',
+        extra: _checkout.toExtra(PaymentMethod.card),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -59,38 +82,17 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
 
     // This project has no payment gateway. The form values remain in memory
     // only and are never sent to the order service.
-    if (widget.orderDraft == null) {
-      context.goNamed(
-        'payment-result',
-        extra: {
-          'orderId': widget.orderId,
-          'amountMinor': widget.amountMinor,
-          'currencyCode': widget.currencyCode,
-          'isDemo': true,
-          'paymentMethod': 'card',
-        },
-      );
-      return;
-    }
-
     setState(() => _submitting = true);
     try {
-      final order = await OrderService().createOrderOnce(
-        widget.orderDraft!,
-        paymentMethod: 'card',
-        paymentStatus: 'demo',
-      );
+      final order = await _payments.confirm(_checkout, PaymentMethod.card);
       if (!mounted) return;
+      _cardNumberController.clear();
+      _cardHolderController.clear();
+      _expiryController.clear();
+      _cvvController.clear();
       context.goNamed(
         'payment-result',
-        extra: {
-          'order': order,
-          'orderId': order.id,
-          'amountMinor': order.effectiveTotalMinor,
-          'currencyCode': order.effectiveCurrencyCode,
-          'isDemo': true,
-          'paymentMethod': 'card',
-        },
+        extra: _checkout.successExtra(PaymentMethod.card, order),
       );
     } catch (_) {
       if (mounted) {
@@ -109,194 +111,189 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        centerTitle: true,
-        leading: IconButton(
-          tooltip: 'Back',
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.goNamed('payment-method');
-            }
-          },
-          icon: const Icon(Icons.arrow_back),
+    return PopScope<Object?>(
+      canPop: !_submitting && context.canPop(),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          centerTitle: true,
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: _submitting ? null : _back,
+            icon: const Icon(Icons.arrow_back),
+          ),
+          title: const Text('Card Payment'),
         ),
-        title: const Text('Card Payment'),
-      ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => FocusScope.of(context).unfocus(),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _FieldLabel('CARD NUMBER', textTheme: textTheme),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _cardNumberController,
-                          focusNode: _cardNumberFocus,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.next,
-                          autofillHints: const [],
-                          inputFormatters: [
-                            _CardNumberFormatter(),
-                            LengthLimitingTextInputFormatter(19),
-                          ],
-                          decoration: _decoration(
-                            hint: '1234 5678 9012 3456',
-                            suffixIcon: const Icon(
-                              Icons.credit_card_outlined,
-                              color: AppColors.secondaryText,
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _FieldLabel('CARD NUMBER', textTheme: textTheme),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _cardNumberController,
+                            focusNode: _cardNumberFocus,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [],
+                            inputFormatters: [
+                              _CardNumberFormatter(),
+                              LengthLimitingTextInputFormatter(19),
+                            ],
+                            decoration: _decoration(
+                              hint: '1234 5678 9012 3456',
+                              suffixIcon: const Icon(
+                                Icons.credit_card_outlined,
+                                color: AppColors.secondaryText,
+                              ),
                             ),
+                            validator: _validateCardNumber,
+                            onFieldSubmitted: (_) =>
+                                _cardHolderFocus.requestFocus(),
                           ),
-                          validator: _validateCardNumber,
-                          onFieldSubmitted: (_) =>
-                              _cardHolderFocus.requestFocus(),
-                        ),
-                        const SizedBox(height: 20),
-                        _FieldLabel('CARD HOLDER NAME', textTheme: textTheme),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _cardHolderController,
-                          focusNode: _cardHolderFocus,
-                          keyboardType: TextInputType.name,
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
-                          autofillHints: const [],
-                          decoration: _decoration(hint: 'John Doe'),
-                          validator: _validateCardHolder,
-                          onFieldSubmitted: (_) => _expiryFocus.requestFocus(),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _FieldLabel(
-                                    'EXPIRY DATE',
-                                    textTheme: textTheme,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextFormField(
-                                    controller: _expiryController,
-                                    focusNode: _expiryFocus,
-                                    keyboardType: TextInputType.number,
-                                    textInputAction: TextInputAction.next,
-                                    inputFormatters: [_ExpiryDateFormatter()],
-                                    decoration: _decoration(hint: 'MM/YY'),
-                                    validator: _validateExpiry,
-                                    onFieldSubmitted: (_) =>
-                                        _cvvFocus.requestFocus(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _FieldLabel('CVV', textTheme: textTheme),
-                                  const SizedBox(height: 8),
-                                  TextFormField(
-                                    controller: _cvvController,
-                                    focusNode: _cvvFocus,
-                                    keyboardType: TextInputType.number,
-                                    textInputAction: TextInputAction.done,
-                                    obscureText: true,
-                                    obscuringCharacter: '•',
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                      LengthLimitingTextInputFormatter(3),
-                                    ],
-                                    decoration: _decoration(
-                                      hint: '123',
-                                      suffixIcon: const Icon(
-                                        Icons.lock_outline,
-                                        color: AppColors.secondaryText,
-                                        size: 19,
-                                      ),
+                          const SizedBox(height: 20),
+                          _FieldLabel('CARD HOLDER NAME', textTheme: textTheme),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _cardHolderController,
+                            focusNode: _cardHolderFocus,
+                            keyboardType: TextInputType.name,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [],
+                            decoration: _decoration(hint: 'John Doe'),
+                            validator: _validateCardHolder,
+                            onFieldSubmitted: (_) =>
+                                _expiryFocus.requestFocus(),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _FieldLabel(
+                                      'EXPIRY DATE',
+                                      textTheme: textTheme,
                                     ),
-                                    validator: _validateCvv,
-                                    onFieldSubmitted: (_) => _submit(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.shield_outlined,
-                              size: 17,
-                              color: AppColors.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                'End-to-end 256-bit encrypted payment',
-                                textAlign: TextAlign.center,
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: AppColors.secondaryText,
+                                    const SizedBox(height: 8),
+                                    TextFormField(
+                                      controller: _expiryController,
+                                      focusNode: _expiryFocus,
+                                      keyboardType: TextInputType.number,
+                                      textInputAction: TextInputAction.next,
+                                      inputFormatters: [_ExpiryDateFormatter()],
+                                      decoration: _decoration(hint: 'MM/YY'),
+                                      validator: _validateExpiry,
+                                      onFieldSubmitted: (_) =>
+                                          _cvvFocus.requestFocus(),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _FieldLabel('CVV', textTheme: textTheme),
+                                    const SizedBox(height: 8),
+                                    TextFormField(
+                                      controller: _cvvController,
+                                      focusNode: _cvvFocus,
+                                      keyboardType: TextInputType.number,
+                                      textInputAction: TextInputAction.done,
+                                      obscureText: true,
+                                      obscuringCharacter: '•',
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                        LengthLimitingTextInputFormatter(3),
+                                      ],
+                                      decoration: _decoration(
+                                        hint: '123',
+                                        suffixIcon: const Icon(
+                                          Icons.lock_outline,
+                                          color: AppColors.secondaryText,
+                                          size: 19,
+                                        ),
+                                      ),
+                                      validator: _validateCvv,
+                                      onFieldSubmitted: (_) => _submit(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.shield_outlined,
+                                size: 17,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  'Demo payment only. No real charge is made.',
+                                  textAlign: TextAlign.center,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: AppColors.secondaryText,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              child: SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: PrimaryButton(
-                  label: _submitting ? 'Saving order...' : _payButtonLabel,
-                  onPressed: _submitting ? null : _submit,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: PrimaryButton(
+                    label: _submitting ? 'Saving order...' : _payButtonLabel,
+                    onPressed: _submitting ? null : _submit,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   String get _payButtonLabel {
-    final amountMinor = widget.amountMinor;
-    if (amountMinor == null) return 'Pay';
-
-    final amount = amountMinor.abs();
-    final whole = (amount ~/ 100).toString().replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (_) => ',',
-    );
-    final sign = amountMinor < 0 ? '-' : '';
-    final fraction = (amount % 100).toString().padLeft(2, '0');
-    return 'Pay ${widget.currencyCode} $sign$whole.$fraction';
+    return _checkout.totalMinor == null
+        ? 'Pay'
+        : 'Pay ${_checkout.amountLabel}';
   }
 
   static InputDecoration _decoration({
