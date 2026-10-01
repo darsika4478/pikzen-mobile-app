@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +8,8 @@ import 'package:pikzen/core/services/firestore_service.dart';
 import 'package:pikzen/core/theme/app_theme.dart';
 import 'package:pikzen/features/auth/providers/auth_provider.dart';
 import 'package:pikzen/features/auth/widgets/auth_ui.dart';
+import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
+import 'package:pikzen/features/product_discovery/providers/product_provider.dart';
 import 'package:pikzen/features/shop_management/screens/shop_dashboard_screen.dart';
 import 'package:pikzen/models/user_model.dart';
 
@@ -150,11 +152,19 @@ void main() {
   }) async {
     final auth = AuthProvider(service: FakeAuthService(), restore: false)
       ..user = user;
+    final cart = CartProvider();
+    final products = ProductProvider();
     addTearDown(auth.dispose);
+    addTearDown(cart.dispose);
+    addTearDown(products.dispose);
     appRouter.go(path);
     await tester.pumpWidget(
       MultiProvider(
-        providers: [ChangeNotifierProvider.value(value: auth)],
+        providers: [
+          ChangeNotifierProvider.value(value: auth),
+          ChangeNotifierProvider.value(value: cart),
+          ChangeNotifierProvider.value(value: products),
+        ],
         child: MaterialApp.router(
           theme: AppTheme.lightTheme,
           routerConfig: appRouter,

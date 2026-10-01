@@ -9,6 +9,7 @@ class UserModel {
     this.role = 'customer',
     this.approvalStatus,
     this.createdAt,
+    this.accountStatus,
   });
   final String id;
   final String name;
@@ -17,6 +18,7 @@ class UserModel {
   final String role;
   final String? approvalStatus;
   final DateTime? createdAt;
+  final String? accountStatus;
   bool get isApprovedShop => role == 'shop' && approvalStatus == 'approved';
 
   factory UserModel.fromMap(String id, Map<String, dynamic> data) => UserModel(
@@ -27,6 +29,9 @@ class UserModel {
     // A missing role must never silently grant customer access.
     role: (data['role'] ?? '') as String,
     approvalStatus: data['approvalStatus'] as String?,
+    accountStatus: data['accountStatus'] is String
+        ? data['accountStatus'] as String
+        : null,
     createdAt: data['createdAt'] is Timestamp
         ? (data['createdAt'] as Timestamp).toDate()
         : data['createdAt'] is DateTime
