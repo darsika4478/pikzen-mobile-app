@@ -22,7 +22,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirm = TextEditingController();
   bool _terms = false;
   String _role = 'customer';
-  bool _submitted = false;
   List<TextEditingController> get _controllers => [
     _name,
     _email,
@@ -65,41 +64,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
       role: _role,
     );
     if (!mounted || !result) return;
-    if (auth.user?.role == 'shop') {
-      setState(() => _submitted = true);
-    } else {
-      context.goNamed(auth.destination!);
-    }
+    context.goNamed(auth.destination!);
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    if (_submitted) {
-      return AuthPage(
-        child: Column(
-          children: [
-            const AuthLogo(),
-            const SizedBox(height: 24),
-            Text(
-              'Registration Submitted',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Your shop account is awaiting admin approval.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            AuthAction(
-              label: 'Back to Login',
-              onPressed: () => context.goNamed('login'),
-            ),
-          ],
-        ),
-      );
-    }
     final matching =
         _confirm.text.isNotEmpty && _confirm.text == _password.text;
     return AuthPage(
