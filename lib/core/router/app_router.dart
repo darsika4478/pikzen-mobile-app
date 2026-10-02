@@ -11,6 +11,7 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
+import '../../features/auth/screens/shop_approval_status_screen.dart';
 import '../../features/cart_checkout/screens/cart_screen.dart';
 import '../../features/cart_checkout/screens/checkout_screen.dart';
 import '../../features/cart_checkout/screens/order_confirmation_screen.dart';
@@ -51,6 +52,8 @@ import '../../shared/screens/splash_screen.dart';
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
   redirect: (context, state) {
+    final auth = context.read<AuthProvider>();
+    final path = state.uri.path;
     const shopPaths = {
       '/shop-dashboard',
       '/add-edit-product',
@@ -59,13 +62,27 @@ final GoRouter appRouter = GoRouter(
       '/prepare-order',
       '/product-management',
     };
-    if (state.uri.path == '/admin/users' &&
-        context.read<AuthProvider>().user?.role != 'admin') {
+    if (path == '/admin/users' && auth.user?.role != 'admin') {
       return '/login';
     }
-    if (shopPaths.contains(state.uri.path)) {
-      final auth = context.read<AuthProvider>();
-      if (auth.user?.isApprovedShop != true) return '/login';
+    if (path == '/shop-pending' || path == '/shop-rejected') {
+      return switch (auth.destination) {
+        'shop-pending' when path == '/shop-pending' => null,
+        'shop-pending' => '/shop-pending',
+        'shop-rejected' when path == '/shop-rejected' => null,
+        'shop-rejected' => '/shop-rejected',
+        'shop-dashboard' => '/shop-dashboard',
+        'customer-home' => '/customer-home',
+        AuthProvider.adminRoute => '/admin/users',
+        _ => '/login',
+      };
+    }
+    if (shopPaths.contains(path) && auth.user?.isApprovedShop != true) {
+      return switch (auth.destination) {
+        'shop-pending' => '/shop-pending',
+        'shop-rejected' => '/shop-rejected',
+        _ => '/login',
+      };
     }
     return null;
   },
@@ -118,6 +135,11 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) => const ProfileScreen(),
         ),
         GoRoute(
+          path: '/edit-profile',
+          name: 'edit-profile',
+          builder: (context, state) => const EditProfileScreen(),
+        ),
+        GoRoute(
           path: '/notifications',
           name: 'notifications',
           builder: (context, state) => const NotificationsScreen(),
@@ -162,6 +184,18 @@ final GoRouter appRouter = GoRouter(
       path: '/signup',
       name: 'signup',
       builder: (context, state) => const SignUpScreen(),
+    ),
+    GoRoute(
+      path: '/shop-pending',
+      name: 'shop-pending',
+      builder: (context, state) =>
+          const ShopApprovalStatusScreen(rejected: false),
+    ),
+    GoRoute(
+      path: '/shop-rejected',
+      name: 'shop-rejected',
+      builder: (context, state) =>
+          const ShopApprovalStatusScreen(rejected: true),
     ),
     GoRoute(
       path: '/checkout',
@@ -304,11 +338,6 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: '/edit-profile',
-      name: 'edit-profile',
-      builder: (context, state) => const EditProfileScreen(),
-    ),
-    GoRoute(
       path: '/settings',
       name: 'settings',
       builder: (context, state) => const SettingsScreen(),
@@ -373,7 +402,7 @@ class _CustomerNavigationShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final index = _paths.indexOf(location);
+    final index = location == '/edit-profile' ? 4 : _paths.indexOf(location);
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(

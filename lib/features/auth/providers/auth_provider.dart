@@ -27,7 +27,12 @@ class AuthProvider extends ChangeNotifier {
   static const String adminRoute = 'admin-users';
   String? get destination => switch (user?.role) {
     'customer' => 'customer-home',
-    'shop' => user!.isApprovedShop ? 'shop-dashboard' : null,
+    'shop' => switch (user!.approvalStatus) {
+      null || 'pending' => 'shop-pending',
+      'approved' => 'shop-dashboard',
+      'rejected' => 'shop-rejected',
+      _ => null,
+    },
     'admin' => adminRoute,
     _ => null,
   };
@@ -70,23 +75,17 @@ class AuthProvider extends ChangeNotifier {
     _notify();
   }
 
-  Future<bool> _run(
-    Future<UserModel> Function() action, {
-    bool registering = false,
-  }) async {
+  Future<bool> _run(Future<UserModel> Function() action) async {
     if (busy) return false;
     busy = true;
     error = null;
     _notify();
     try {
       user = await action();
-      if (shopAccessMessage != null) {
-        if (registering && user?.approvalStatus == 'pending') return true;
-        throw AuthFailure(shopAccessMessage!);
-      }
       if (destination == null) {
-        throw const AuthFailure(
-          'The admin workspace is not available yet. Please contact your team administrator.',
+        throw AuthFailure(
+          shopAccessMessage ??
+              'This account cannot open a workspace. Please contact support.',
         );
       }
       return true;
@@ -120,7 +119,6 @@ class AuthProvider extends ChangeNotifier {
       password: password,
       role: role,
     ),
-    registering: true,
   );
   Future<bool> reset(String email) async {
     if (busy) return false;
@@ -142,6 +140,40 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     await _service.signOut();
     user = null;
+    _notify();
+  }
+
+  /// Reload the signed-in profile after a safe customer edit.
+  Future<void> refreshProfile() async {
+    final currentId = user?.id;
+    if (currentId == null) return;
+    final refreshed = await _service.profile();
+    if (user?.id == currentId && refreshed.id == currentId) {
+      user = refreshed;
+      _notify();
+    }
+  }
+
+  /// Apply an observed approval decision for the current shop account only.
+  void syncShopApprovalStatus(String uid, String? status) {
+    final current = user;
+    if (current == null ||
+        current.id != uid ||
+        current.role != 'shop' ||
+        !{null, 'pending', 'approved', 'rejected'}.contains(status) ||
+        current.approvalStatus == status) {
+      return;
+    }
+    user = UserModel(
+      id: current.id,
+      name: current.name,
+      email: current.email,
+      phoneNumber: current.phoneNumber,
+      role: current.role,
+      approvalStatus: status,
+      createdAt: current.createdAt,
+      accountStatus: current.accountStatus,
+    );
     _notify();
   }
 
