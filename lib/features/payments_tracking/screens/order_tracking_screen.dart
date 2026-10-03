@@ -8,7 +8,7 @@ import '../../../models/order_model.dart';
 
 /// Customer-facing tracking view for the currently selected order.
 ///
-class OrderTrackingScreen extends StatelessWidget {
+class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key, this.order, this.orderId});
 
   final OrderModel? order;
@@ -17,14 +17,39 @@ class OrderTrackingScreen extends StatelessWidget {
   final String? orderId;
 
   @override
+  State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
+}
+
+class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
+  final _orders = OrderService();
+  Stream<OrderModel?>? _stream;
+  bool _recorded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.order?.id ?? widget.orderId;
+    if (id != null && Firebase.apps.isNotEmpty) {
+      _stream = _orders.watchOrder(id);
+    }
+  }
+
+  void _retry() {
+    final id = widget.order?.id ?? widget.orderId;
+    if (id != null && Firebase.apps.isNotEmpty) {
+      setState(() => _stream = _orders.watchOrder(id));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final id = (order?.id ?? orderId ?? '').trim();
-    if (id.isNotEmpty && Firebase.apps.isNotEmpty) {
+    final id = (widget.order?.id ?? widget.orderId ?? '').trim();
+    if (id.isNotEmpty && _stream != null) {
       return StreamBuilder<OrderModel?>(
-        stream: OrderService().watchOrder(id),
+        stream: _stream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return _buildScreen(context, order, error: true);
+            return _buildScreen(context, null, error: true);
           }
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
@@ -34,11 +59,18 @@ class OrderTrackingScreen extends StatelessWidget {
               ),
             );
           }
-          return _buildScreen(context, snapshot.data ?? order);
+          final loaded = snapshot.data;
+          if (loaded != null && !_recorded) {
+            _recorded = true;
+            _orders
+                .markCustomerView(id, 'trackingViewedAt')
+                .catchError((Object _) {});
+          }
+          return _buildScreen(context, loaded, error: loaded == null);
         },
       );
     }
-    return _buildScreen(context, order);
+    return _buildScreen(context, widget.order, error: widget.order == null);
   }
 
   Widget _buildScreen(
@@ -56,11 +88,10 @@ class OrderTrackingScreen extends StatelessWidget {
         leading: IconButton(
           tooltip: 'Back to Order Details',
           onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.goNamed('order-details', extra: selectedOrder ?? orderId);
-            }
+            context.goNamed(
+              'order-details',
+              extra: selectedOrder?.id ?? widget.orderId,
+            );
           },
           icon: const Icon(Icons.arrow_back),
         ),
@@ -83,7 +114,11 @@ class OrderTrackingScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _PickupSummaryCard(order: selectedOrder, orderId: orderId),
+                    if (!error)
+                      _PickupSummaryCard(
+                        order: selectedOrder,
+                        orderId: widget.orderId,
+                      ),
                     const SizedBox(height: 22),
                     Text(
                       'ORDER STATUS',
@@ -94,14 +129,12 @@ class OrderTrackingScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     if (error)
-                      const _TrackingUnavailable()
+                      _TrackingUnavailable(onRetry: _retry)
                     else
                       _StatusTimeline(order: selectedOrder),
                     const SizedBox(height: 20),
-                    if (selectedOrder?.status?.toLowerCase() == 'cancelled')
-                      const _CancelledNotice()
-                    else
-                      const _PickupInstructionsCard(),
+                    if (selectedOrder?.status?.toLowerCase() != 'cancelled')
+                      _PickupInstructionsCard(order: selectedOrder),
                   ],
                 ),
               ),
@@ -115,11 +148,11 @@ class OrderTrackingScreen extends StatelessWidget {
                     width: double.infinity,
                     height: 54,
                     child: ElevatedButton.icon(
-                      onPressed: selectedOrder == null && orderId == null
+                      onPressed: selectedOrder == null
                           ? null
                           : () => context.pushNamed(
                               'order-details',
-                              extra: selectedOrder ?? orderId,
+                              extra: selectedOrder.id,
                             ),
                       icon: const Icon(Icons.receipt_long_outlined),
                       label: const Text('View Order Details'),
@@ -132,7 +165,7 @@ class OrderTrackingScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   TextButton(
-                    onPressed: null,
+                    onPressed: () => _showInformation(context),
                     child: const Text('Need help? Contact Store'),
                   ),
                 ],
@@ -300,7 +333,6 @@ class _StatusTimeline extends StatelessWidget {
     final status = order?.status?.trim().toLowerCase();
     if (status == 'cancelled') return const _CancelledNotice();
     final currentIndex = _statusIndex(status);
-    final collected = status == 'collected' || status == 'completed';
     final timestamps = [
       order?.createdAt,
       order?.acceptedAt,
@@ -323,17 +355,14 @@ class _StatusTimeline extends StatelessWidget {
               label: _stages[index],
               timestamp:
                   timestamps[index] == null ||
-                      !(collected ||
-                          index <= currentIndex ||
-                          (status == null && index == 0))
+                      !(index <= currentIndex || (status == null && index == 0))
                   ? null
                   : _formatTimestamp(context, timestamps[index]!),
               completed:
-                  collected ||
                   index < currentIndex ||
                   (status == null && index == 0 && order != null),
-              current: !collected && index == currentIndex,
-              connectorCompleted: index < currentIndex || collected,
+              current: index == currentIndex,
+              connectorCompleted: index < currentIndex,
               isLast: index == _stages.length - 1,
               textTheme: textTheme,
             ),
@@ -399,6 +428,13 @@ class _TimelineStage extends StatelessWidget {
                   ),
                   child: completed
                       ? const Icon(Icons.check, size: 15, color: Colors.white)
+                      : current
+                      ? const Center(
+                          child: CircleAvatar(
+                            radius: 5,
+                            backgroundColor: AppColors.primary,
+                          ),
+                        )
                       : null,
                 ),
                 if (!isLast)
@@ -454,7 +490,8 @@ class _TimelineStage extends StatelessWidget {
 }
 
 class _PickupInstructionsCard extends StatelessWidget {
-  const _PickupInstructionsCard();
+  const _PickupInstructionsCard({required this.order});
+  final OrderModel? order;
 
   @override
   Widget build(BuildContext context) {
@@ -476,14 +513,14 @@ class _PickupInstructionsCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Pickup',
+                  'Pickup Counter',
                   style: textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Show your order number at the pickup counter.',
+                  'Show ${order == null ? 'your order number' : _formatOrderId(order!.id)} at the counter.',
                   style: textTheme.bodySmall?.copyWith(
                     color: AppColors.secondaryText,
                   ),
@@ -519,14 +556,20 @@ class _CancelledNotice extends StatelessWidget {
 }
 
 class _TrackingUnavailable extends StatelessWidget {
-  const _TrackingUnavailable();
+  const _TrackingUnavailable({required this.onRetry});
+  final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.all(16),
-    child: Text(
-      'Order status is unavailable right now.',
-      textAlign: TextAlign.center,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      children: [
+        const Text(
+          'Order status is unavailable right now.',
+          textAlign: TextAlign.center,
+        ),
+        TextButton(onPressed: onRetry, child: const Text('Retry')),
+      ],
     ),
   );
 }
@@ -535,7 +578,7 @@ int _statusIndex(String? status) => switch (status) {
   'placed' || 'pending' => 0,
   'accepted' || 'confirmed' => 1,
   'preparing' => 2,
-  'ready' => 3,
+  'ready' || 'readyforpickup' => 3,
   'collected' || 'completed' => 4,
   _ => -1,
 };
@@ -544,7 +587,7 @@ String _statusLabel(String? status) => switch (status?.toLowerCase()) {
   'placed' || 'pending' => 'Order Placed',
   'accepted' || 'confirmed' => 'Accepted',
   'preparing' => 'Preparing',
-  'ready' => 'Ready for Pickup',
+  'ready' || 'readyforpickup' => 'Ready for Pickup',
   'collected' || 'completed' => 'Collected',
   'cancelled' => 'Cancelled',
   _ => 'Status unavailable',

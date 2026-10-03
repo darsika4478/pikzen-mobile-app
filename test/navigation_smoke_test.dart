@@ -6,7 +6,9 @@ import 'package:pikzen/core/theme/app_theme.dart';
 import 'package:pikzen/features/auth/providers/auth_provider.dart';
 import 'package:pikzen/features/auth/screens/login_screen.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
+import 'package:pikzen/features/cart_checkout/providers/checkout_provider.dart';
 import 'package:pikzen/features/cart_checkout/screens/cart_screen.dart';
+import 'package:pikzen/features/cart_checkout/screens/checkout_screen.dart';
 import 'package:pikzen/features/product_discovery/providers/product_provider.dart';
 import 'package:pikzen/features/product_discovery/screens/customer_home_screen.dart';
 import 'package:pikzen/features/product_discovery/screens/categories_screen.dart';
@@ -22,15 +24,18 @@ void main() {
   ) async {
     final auth = AuthProvider(service: FakeAuthService(), restore: false);
     final cart = CartProvider();
+    final checkout = CheckoutProvider();
     final products = ProductProvider();
     addTearDown(auth.dispose);
     addTearDown(cart.dispose);
+    addTearDown(checkout.dispose);
     addTearDown(products.dispose);
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: auth),
           ChangeNotifierProvider.value(value: cart),
+          ChangeNotifierProvider.value(value: checkout),
           ChangeNotifierProvider.value(value: products),
         ],
         child: MaterialApp.router(
@@ -103,6 +108,9 @@ void main() {
     expect(cart.count, 1);
     await tester.tap(find.byTooltip('Remove Red Apples'));
     await tester.pumpAndSettle();
+    expect(find.text('Remove Item?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Remove'));
+    await tester.pumpAndSettle();
     expect(cart.count, 0);
     await tester.tap(find.widgetWithText(NavigationDestination, 'Favourites'));
     await tester.pumpAndSettle();
@@ -122,6 +130,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Fresh Whole Milk'), findsWidgets);
     expect(find.text('Red Apples'), findsNothing);
+    await tester.tap(find.textContaining('Add to Cart').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(CartScreen), findsOneWidget);
+    expect(find.text('Fresh Whole Milk'), findsOneWidget);
+    expect(cart.quantity('whole-milk'), 1);
+    await tester.scrollUntilVisible(
+      find.text('Proceed to Checkout'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Proceed to Checkout'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckoutScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

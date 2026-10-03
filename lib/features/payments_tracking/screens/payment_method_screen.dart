@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../models/order_model.dart';
 import '../../../models/payment_model.dart';
+import '../../cart_checkout/providers/checkout_provider.dart';
 
 class PaymentMethodScreen extends StatefulWidget {
   const PaymentMethodScreen({
@@ -38,7 +40,15 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedMethod = PaymentMethod.fromValue(widget.selectedMethod);
+    CheckoutProvider? checkout;
+    try {
+      checkout = context.read<CheckoutProvider>();
+    } on ProviderNotFoundException {
+      /* Standalone route. */
+    }
+    _selectedMethod =
+        checkout?.paymentMethod ??
+        PaymentMethod.fromValue(widget.selectedMethod);
   }
 
   @override
@@ -50,6 +60,17 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
   }
 
   void _continue() {
+    CheckoutProvider? checkout;
+    try {
+      checkout = context.read<CheckoutProvider>();
+    } on ProviderNotFoundException {
+      /* Standalone route. */
+    }
+    if (checkout != null) {
+      checkout.setPaymentMethod(_selectedMethod);
+      context.goNamed('review-order');
+      return;
+    }
     context.pushNamed(
       _selectedMethod.routeName,
       extra: _checkout.toExtra(_selectedMethod),
@@ -88,11 +109,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Choose how you’d like to pay',
-                      style: textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 4),
                     ...PaymentMethod.values.map(
                       (method) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -115,7 +132,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            'Demo checkout. No real payment is made.',
+                            '256-bit encrypted secure checkout',
                             textAlign: TextAlign.center,
                             style: textTheme.bodySmall?.copyWith(
                               color: AppColors.secondaryText,
@@ -174,12 +191,12 @@ class _PaymentMethodCard extends StatelessWidget {
       PaymentMethod.ewallet => (
         Icons.account_balance_wallet_outlined,
         'e-Wallet',
-        'Sri Lanka sample wallets · Demo only',
+        "Touch 'n Go, GrabPay, Boost",
       ),
       PaymentMethod.onlineBanking => (
         Icons.account_balance_outlined,
         'Online Banking',
-        'Sri Lanka sample banks · Demo only',
+        'FPX Direct Bank Transfer',
       ),
       PaymentMethod.cashOnPickup => (
         Icons.payments_outlined,

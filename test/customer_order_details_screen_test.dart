@@ -52,10 +52,10 @@ void main() {
       expect(find.text('ITEMS (2)'), findsOneWidget);
       expect(find.text('Red Apple'), findsOneWidget);
       expect(find.text('Quantity: 2'), findsOneWidget);
-      expect(find.text('LKR 11.80'), findsOneWidget);
+      expect(find.text('Rs. 11.80'), findsOneWidget);
       expect(find.text('Fresh Milk'), findsOneWidget);
-      expect(find.text('LKR 6.90'), findsOneWidget);
-      expect(find.text('LKR 18.70'), findsOneWidget);
+      expect(find.text('Rs. 6.90'), findsOneWidget);
+      expect(find.text('Rs. 18.70'), findsOneWidget);
       expect(find.text('Payment'), findsOneWidget);
       expect(find.text('Status'), findsOneWidget);
       expect(tester.takeException(), isNull);

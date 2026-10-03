@@ -26,34 +26,24 @@ void main() {
       expect(find.byType(PaymentMethodScreen), findsOneWidget);
     });
 
-    testWidgets('the supplied non-Luhn dummy card reaches demo success', (
-      tester,
-    ) async {
+    testWidgets('a non-Luhn card is rejected without a charge', (tester) async {
       final router = _router();
       addTearDown(router.dispose);
 
       await tester.pumpWidget(_app(router));
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
-      await _enterCard(tester, '1111 2222 3333 4444', expiry: '12/30');
+      await _enterCard(tester, '4242 4242 4242 4243', expiry: '12/30');
       await tester.tap(find.text('Pay LKR 2,450.00'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(PaymentResultScreen), findsOneWidget);
-      expect(find.text('Payment Successful!'), findsOneWidget);
-      expect(find.text('Demo payment complete'), findsOneWidget);
-      expect(
-        find.text('Prototype only. No real charge was processed.'),
-        findsOneWidget,
-      );
-      expect(find.text('1111 2222 3333 4444'), findsNothing);
-      expect(find.text('123'), findsNothing);
+      expect(find.byType(CardPaymentScreen), findsOneWidget);
+      expect(find.text('Check the card number'), findsOneWidget);
+      expect(find.byType(PaymentResultScreen), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('any 16 digits and format-only expiry are accepted', (
-      tester,
-    ) async {
+    testWidgets('an expired card is rejected without a charge', (tester) async {
       final router = _router();
       addTearDown(router.dispose);
 
@@ -64,8 +54,8 @@ void main() {
       await tester.tap(find.text('Pay LKR 2,450.00'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(PaymentResultScreen), findsOneWidget);
-      expect(find.text('Payment Successful!'), findsOneWidget);
+      expect(find.text('Card has expired'), findsOneWidget);
+      expect(find.byType(PaymentResultScreen), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

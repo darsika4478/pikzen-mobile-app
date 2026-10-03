@@ -28,6 +28,7 @@ void main() {
           ),
         ],
         createdAt: createdAt,
+        replacementPreference: 'contactMe',
         status: 'placed',
         shopId: 'shop-1',
         totalMinor: 90000,
@@ -45,9 +46,32 @@ void main() {
       expect(decoded.items.single.quantity, 2);
       expect(decoded.items.single.unit, 'bottle');
       expect(decoded.pickupAt, isNull);
+      expect(decoded.replacementPreference, 'contactMe');
       expect(decoded.readyAt, isNull);
+      expect(encoded.containsKey('cancellationReason'), isFalse);
     },
   );
+
+  test('cancelled order preserves reason and optional note', () {
+    final order = OrderModel(
+      id: 'order-2',
+      userId: 'customer-1',
+      items: const [],
+      createdAt: createdAt,
+      status: 'cancelled',
+      cancellationReason: 'changedMind',
+      cancellationNote: 'Plans changed',
+      cancelledAt: createdAt,
+    );
+    final decoded = OrderModel.fromFirestore(order.id, order.toFirestore());
+    expect(decoded.status, 'cancelled');
+    expect(decoded.cancellationReason, 'changedMind');
+    expect(decoded.cancellationNote, 'Plans changed');
+    expect(
+      decoded.cancelledAt?.millisecondsSinceEpoch,
+      createdAt.millisecondsSinceEpoch,
+    );
+  });
 
   test('legacy orders can omit optional lifecycle fields', () {
     final decoded = OrderModel.fromFirestore('legacy-1', {

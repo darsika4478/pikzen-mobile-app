@@ -7,18 +7,69 @@ import '../../../core/services/order_service.dart';
 import '../../../models/cart_item_model.dart';
 import '../../../models/order_model.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../cart_checkout/widgets/checkout_ui.dart';
 
-class CustomerOrderDetailsScreen extends StatelessWidget {
-  const CustomerOrderDetailsScreen({super.key, this.order, this.orderId});
+class CustomerOrderDetailsScreen extends StatefulWidget {
+  const CustomerOrderDetailsScreen({
+    super.key,
+    this.order,
+    this.orderId,
+    this.orderService,
+    this.showCancellationSuccess = false,
+  });
 
   /// The selected order snapshot passed from the order list.
   final OrderModel? order;
   final String? orderId;
+  final OrderService? orderService;
+  final bool showCancellationSuccess;
+
+  @override
+  State<CustomerOrderDetailsScreen> createState() =>
+      _CustomerOrderDetailsScreenState();
+}
+
+class _CustomerOrderDetailsScreenState
+    extends State<CustomerOrderDetailsScreen> {
+  late final OrderService _orders = widget.orderService ?? OrderService();
+  Stream<OrderModel?>? _stream;
+  bool _recorded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.showCancellationSuccess) _queueCancellationNotice();
+    final id = widget.order?.id ?? widget.orderId;
+    if (id != null &&
+        (Firebase.apps.isNotEmpty || widget.orderService != null)) {
+      _stream = _orders.watchOrder(id);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomerOrderDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showCancellationSuccess && !oldWidget.showCancellationSuccess) {
+      _queueCancellationNotice();
+    }
+  }
+
+  void _queueCancellationNotice() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.removeCurrentSnackBar();
+        messenger.showSnackBar(
+          const SnackBar(content: Text('The order has cancelled!')),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final selectedOrder = order;
-    final selectedId = selectedOrder?.id ?? orderId;
+    final selectedOrder = widget.order;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -46,10 +97,10 @@ class CustomerOrderDetailsScreen extends StatelessWidget {
       ),
       body: SafeArea(
         top: false,
-        child: selectedId == null || Firebase.apps.isEmpty
+        child: _stream == null
             ? _buildBody(context, selectedOrder)
             : StreamBuilder<OrderModel?>(
-                stream: OrderService().watchOrder(selectedId),
+                stream: _stream,
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Center(
@@ -64,7 +115,14 @@ class CustomerOrderDetailsScreen extends StatelessWidget {
                       ),
                     );
                   }
-                  return _buildBody(context, snapshot.data ?? selectedOrder);
+                  final loaded = snapshot.data;
+                  if (loaded != null && !_recorded) {
+                    _recorded = true;
+                    _orders
+                        .markCustomerView(loaded.id, 'orderDetailsViewedAt')
+                        .catchError((Object _) {});
+                  }
+                  return _buildBody(context, loaded);
                 },
               ),
       ),
@@ -77,9 +135,9 @@ class CustomerOrderDetailsScreen extends StatelessWidget {
         ? Center(
             child: EmptyState(
               title: 'Order details unavailable',
-              message: orderId == null
+              message: widget.orderId == null && widget.order == null
                   ? 'Open this page from an order in My Orders.'
-                  : 'Order ${_displayOrderId(orderId!)} is unavailable.',
+                  : 'This order is unavailable.',
               icon: Icons.receipt_long_outlined,
             ),
           )
@@ -91,57 +149,59 @@ class CustomerOrderDetailsScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Tooltip(
-                          message:
-                              OrderService.canCustomerCancel(
-                                selectedOrder.status,
-                              )
-                              ? 'Cancel this order'
-                              : 'This order can no longer be cancelled',
-                          child: TextButton.icon(
+                      Row(
+                        children: [
+                          TextButton.icon(
                             onPressed:
-                                Firebase.apps.isNotEmpty &&
-                                    OrderService.canCustomerCancel(
-                                      selectedOrder.status,
-                                    )
-                                ? () => _confirmCancellation(
-                                    context,
-                                    selectedOrder,
+                                OrderService.canCustomerCancel(
+                                  selectedOrder.status,
+                                )
+                                ? () => context.pushNamed(
+                                    'order-cancellation',
+                                    extra: selectedOrder,
                                   )
                                 : null,
-                            icon: const Icon(Icons.cancel_outlined),
+                            icon: const Icon(Icons.cancel_outlined, size: 17),
                             label: const Text('Cancel Order'),
                             style: TextButton.styleFrom(
-                              disabledForegroundColor: AppColors.error,
+                              foregroundColor: AppColors.surface,
+                              backgroundColor: const Color(0xFFBD1717),
+                              disabledForegroundColor: AppColors.secondaryText,
+                              disabledBackgroundColor: AppColors.border,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              minimumSize: const Size(0, 32),
                             ),
                           ),
-                        ),
-                      ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryText,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _displayOrderId(selectedOrder.id),
-                            style: textTheme.labelLarge?.copyWith(
-                              color: AppColors.surface,
-                              letterSpacing: 0.3,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryText,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                _displayOrderId(selectedOrder.id),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.labelLarge?.copyWith(
+                                  color: AppColors.surface,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       _DateTimeCard(order: selectedOrder),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 18),
                       Text(
                         'ITEMS (${selectedOrder.items.length})',
                         style: textTheme.labelLarge?.copyWith(
@@ -151,7 +211,7 @@ class CustomerOrderDetailsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       _OrderItemsCard(items: selectedOrder.items),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14),
                       _OrderSummaryCard(order: selectedOrder),
                     ],
                   ),
@@ -162,62 +222,30 @@ class CustomerOrderDetailsScreen extends StatelessWidget {
                 child: SizedBox(
                   height: 54,
                   width: double.infinity,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: () => context.pushNamed(
                       'order-tracking',
                       extra: selectedOrder,
                     ),
-                    icon: const Icon(Icons.location_searching_outlined),
-                    label: const Text('Track Order'),
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Track Order'),
+                        SizedBox(width: 7),
+                        Icon(Icons.arrow_forward, size: 18),
+                      ],
                     ),
                   ),
                 ),
               ),
             ],
           );
-  }
-
-  Future<void> _confirmCancellation(
-    BuildContext context,
-    OrderModel selectedOrder,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Order?'),
-        content: const Text('Are you sure you want to cancel this order?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep Order'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Cancel Order'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    try {
-      await OrderService().cancelOrder(selectedOrder.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order cancelled successfully.')),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This order could not be cancelled.')),
-        );
-      }
-    }
   }
 
   static String _displayOrderId(String id) {
@@ -259,9 +287,17 @@ class _DateTimeCard extends StatelessWidget {
     return _SurfaceCard(
       child: Column(
         children: [
-          _DetailRow(label: 'Date', value: date),
-          const SizedBox(height: 12),
-          _DetailRow(label: 'Pickup Time', value: pickupTime),
+          _DetailRow(
+            label: 'Date',
+            value: date,
+            icon: Icons.calendar_today_outlined,
+          ),
+          const Divider(height: 19),
+          _DetailRow(
+            label: 'Time',
+            value: pickupTime,
+            icon: Icons.schedule_outlined,
+          ),
         ],
       ),
     );
@@ -341,7 +377,7 @@ class _ProductOrderRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          _formatAmount(product.priceMinor * quantity, product.currencyCode),
+          rupees(product.priceMinor * quantity),
           textAlign: TextAlign.end,
           style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
@@ -361,8 +397,8 @@ class _ProductThumbnail extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(11),
       child: Container(
-        width: 56,
-        height: 56,
+        width: 44,
+        height: 44,
         color: AppColors.softGreen,
         child: url == null || url.isEmpty
             ? const Icon(Icons.eco_outlined, color: AppColors.primary)
@@ -387,18 +423,10 @@ class _OrderSummaryCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final hasTotal = order.totalMinor != null || order.items.isNotEmpty;
     final totalMinor = order.effectiveTotalMinor;
-    final currencyCode = order.effectiveCurrencyCode;
 
     return _SurfaceCard(
       child: Column(
         children: [
-          _DetailRow(label: 'Payment', value: _paymentDescription(order)),
-          const SizedBox(height: 12),
-          _DetailRow(label: 'Status', value: _statusDescription(order.status)),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Divider(height: 1),
-          ),
           Row(
             children: [
               Expanded(
@@ -410,9 +438,7 @@ class _OrderSummaryCard extends StatelessWidget {
                 ),
               ),
               Text(
-                hasTotal
-                    ? _formatAmount(totalMinor, currencyCode)
-                    : 'Not available',
+                hasTotal ? rupees(totalMinor) : 'Not available',
                 style: textTheme.titleMedium?.copyWith(
                   color: AppColors.primary,
                   fontWeight: FontWeight.w700,
@@ -420,6 +446,10 @@ class _OrderSummaryCard extends StatelessWidget {
               ),
             ],
           ),
+          const Divider(height: 26),
+          _DetailRow(label: 'Payment', value: _paymentDescription(order)),
+          const SizedBox(height: 12),
+          _DetailRow(label: 'Status', value: _statusDescription(order.status)),
         ],
       ),
     );
@@ -427,16 +457,21 @@ class _OrderSummaryCard extends StatelessWidget {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
+  const _DetailRow({required this.label, required this.value, this.icon});
 
   final String label;
   final String value;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     return Row(
       children: [
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: AppColors.secondaryText),
+          const SizedBox(width: 7),
+        ],
         Expanded(
           child: Text(
             label,
@@ -470,7 +505,7 @@ class _SurfaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -486,17 +521,6 @@ class _SurfaceCard extends StatelessWidget {
       child: child,
     );
   }
-}
-
-String _formatAmount(int amountMinor, String currencyCode) {
-  final amount = amountMinor.abs();
-  final whole = (amount ~/ 100).toString().replaceAllMapped(
-    RegExp(r'\B(?=(\d{3})+(?!\d))'),
-    (_) => ',',
-  );
-  final sign = amountMinor < 0 ? '-' : '';
-  final fraction = (amount % 100).toString().padLeft(2, '0');
-  return '$currencyCode $sign$whole.$fraction';
 }
 
 String _paymentDescription(OrderModel order) {

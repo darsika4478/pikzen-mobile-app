@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,11 +11,15 @@ import '../../../core/services/order_service.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../models/order_model.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../cart_checkout/widgets/checkout_ui.dart';
 
 enum _OrdersFilter { all, ongoing, completed }
 
 class MyOrdersScreen extends StatefulWidget {
-  const MyOrdersScreen({super.key});
+  const MyOrdersScreen({super.key, this.orderService, this.customerId});
+
+  final OrderService? orderService;
+  final String? customerId;
 
   @override
   State<MyOrdersScreen> createState() => _MyOrdersScreenState();
@@ -23,6 +30,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   OrderService? _service;
   String? _streamUserId;
   Stream<List<OrderModel>>? _ordersStream;
+  final Set<String> _recordedIds = {};
 
   void _selectFilter(_OrdersFilter filter) {
     setState(() => _selectedFilter = filter);
@@ -31,7 +39,12 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final userId = Provider.of<AuthProvider?>(context, listen: false)?.user?.id;
+    final profileUserId = Provider.of<AuthProvider?>(context)?.user?.id;
+    final userId =
+        widget.customerId ??
+        (Firebase.apps.isNotEmpty
+            ? FirebaseAuth.instance.currentUser?.uid
+            : profileUserId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -51,10 +64,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         ),
         title: const Text('My Orders'),
         actions: [
-          IconButton(
-            tooltip: 'Past Orders',
-            onPressed: () => context.pushNamed('order-history'),
-            icon: const Icon(Icons.history_rounded),
+          Tooltip(
+            message: 'Past Orders',
+            child: TextButton.icon(
+              onPressed: () => context.pushNamed('order-history'),
+              icon: const Icon(Icons.history_rounded, size: 17),
+              label: const Text('Past Orders', style: TextStyle(fontSize: 10)),
+            ),
           ),
         ],
       ),
@@ -97,12 +113,19 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   }
 
   Widget _ordersContent(BuildContext context, String? userId) {
-    if (userId == null || Firebase.apps.isEmpty) {
+    if (userId == null) {
+      if (Firebase.apps.isNotEmpty) {
+        return const Center(child: Text('Sign in to see your orders.'));
+      }
+      return _showOrders(context, const []);
+    }
+    if (Firebase.apps.isEmpty && widget.orderService == null) {
       return _showOrders(context, const []);
     }
     if (_streamUserId != userId || _ordersStream == null) {
       _streamUserId = userId;
-      _service ??= OrderService();
+      _recordedIds.clear();
+      _service ??= widget.orderService ?? OrderService();
       _ordersStream = _service!.forCustomer(userId);
     }
     return StreamBuilder<List<OrderModel>>(
@@ -116,7 +139,19 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
             child: CircularProgressIndicator(color: AppColors.primary),
           );
         }
-        return _showOrders(context, snapshot.data ?? const []);
+        final orders = (snapshot.data ?? const <OrderModel>[])
+            .where((order) => order.userId == userId)
+            .toList(growable: false);
+        for (final order in orders) {
+          if (_recordedIds.add(order.id)) {
+            unawaited(
+              _service!
+                  .markCustomerView(order.id, 'ordersListViewedAt')
+                  .catchError((Object _) {}),
+            );
+          }
+        }
+        return _showOrders(context, orders);
       },
     );
   }
@@ -167,7 +202,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         final order = visible[index];
         return _MyOrderCard(
           order: order,
-          onTap: () => context.pushNamed('order-details', extra: order),
+          onTap: () => context.pushNamed('order-details', extra: order.id),
         );
       },
     );
@@ -182,50 +217,92 @@ class _MyOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = order.effectiveTotalMinor;
-    return Card(
-      child: ListTile(
+    final date = order.createdAt;
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final status = _customerStatus(order.status);
+    final statusColor = switch (order.status?.toLowerCase()) {
+      'cancelled' => const Color(0xFFBD1717),
+      'ready' => const Color(0xFF008B60),
+      'collected' || 'completed' => AppColors.secondaryText,
+      _ => const Color(0xFFB26B00),
+    };
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
         onTap: onTap,
-        title: Text(order.id.startsWith('#') ? order.id : '#${order.id}'),
-        subtitle: Text(_customerStatus(order.status)),
-        leading: CircleAvatar(
-          backgroundColor: AppColors.softGreen,
-          child: const Icon(
-            Icons.receipt_long_outlined,
-            color: AppColors.primary,
-          ),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        isThreeLine: false,
-        dense: false,
-        horizontalTitleGap: 12,
-        titleAlignment: ListTileTitleAlignment.center,
-        visualDensity: VisualDensity.standard,
-        subtitleTextStyle: Theme.of(context).textTheme.bodySmall
-            ?.copyWith(color: AppColors.secondaryText),
-        titleTextStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: AppColors.primaryText,
-          fontWeight: FontWeight.w700,
-        ),
-        // Total is appended in the trailing area so long order IDs can wrap.
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 104,
-              child: Text(
-                _money(total, order.effectiveCurrencyCode),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.end,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 14, 13),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.id.startsWith('#') ? order.id : '#${order.id}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${date.day} ${months[date.month - 1]} ${date.year}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.secondaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      rupees(order.effectiveTotalMinor),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const Icon(Icons.chevron_right),
-          ],
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: statusColor.withValues(alpha: .22)),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: statusColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -241,15 +318,6 @@ String _customerStatus(String? status) => switch (status?.toLowerCase()) {
   'cancelled' => 'Cancelled',
   _ => 'Status unavailable',
 };
-
-String _money(int minor, String currency) {
-  final amount = minor.abs();
-  final whole = (amount ~/ 100).toString().replaceAllMapped(
-    RegExp(r'\B(?=(\d{3})+(?!\d))'),
-    (_) => ',',
-  );
-  return '$currency ${minor < 0 ? '-' : ''}$whole.${(amount % 100).toString().padLeft(2, '0')}';
-}
 
 class _FilterChip extends StatelessWidget {
   const _FilterChip({

@@ -26,7 +26,7 @@ enum PaymentMethod {
   card('card', 'Credit / Debit Card', 'card-payment'),
   ewallet('ewallet', 'e-Wallet', 'ewallet-payment'),
   onlineBanking('onlineBanking', 'Online Banking', 'online-banking-payment'),
-  cashOnPickup('cashOnPickup', 'Cash on Pickup', 'order-confirmation');
+  cashOnPickup('cashOnPickup', 'Cash on Pickup', 'cash-order-confirmation');
 
   const PaymentMethod(this.identifier, this.label, this.routeName);
 
