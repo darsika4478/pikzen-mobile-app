@@ -79,4 +79,25 @@ class CartProvider extends ChangeNotifier {
   void remove(String id) {
     if (_items.remove(id) != null) notifyListeners();
   }
+
+  /// Removes only quantities captured in the completed order snapshot.
+  void removePurchased(List<CartItemModel> purchased) {
+    var changed = false;
+    for (final item in purchased) {
+      final current = _items[item.product.id];
+      if (current == null) continue;
+      final remaining = current.quantity - item.quantity;
+      if (remaining <= 0) {
+        _items.remove(item.product.id);
+      } else {
+        _items[item.product.id] = CartItemModel(
+          product: current.product,
+          quantity: remaining,
+          unit: current.unit,
+        );
+      }
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
 }

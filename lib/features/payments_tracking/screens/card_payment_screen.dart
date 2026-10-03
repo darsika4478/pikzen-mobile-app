@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../models/order_model.dart';
 import '../../../models/payment_model.dart';
 import '../../../shared/widgets/primary_button.dart';
+import '../../cart_checkout/providers/checkout_provider.dart';
+import '../../cart_checkout/providers/cart_provider.dart';
 
 class CardPaymentScreen extends StatefulWidget {
   const CardPaymentScreen({
@@ -32,6 +35,8 @@ class CardPaymentScreen extends StatefulWidget {
 }
 
 class _CardPaymentScreenState extends State<CardPaymentScreen> {
+  bool _submitting = false;
+  bool _completed = false;
   final _formKey = GlobalKey<FormState>();
   final _cardNumberController = TextEditingController();
   final _cardHolderController = TextEditingController();
@@ -41,8 +46,6 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   final _cardHolderFocus = FocusNode();
   final _expiryFocus = FocusNode();
   final _cvvFocus = FocusNode();
-  bool _submitting = false;
-  late final _payments = widget.demoPayments ?? DemoPaymentService();
 
   PaymentCheckoutData get _checkout => PaymentCheckoutData(
     amountMinor: widget.amountMinor,
@@ -56,10 +59,15 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
     if (context.canPop()) {
       context.pop();
     } else {
-      context.goNamed(
-        'payment-method',
-        extra: _checkout.toExtra(PaymentMethod.card),
-      );
+      try {
+        context.read<CheckoutProvider>();
+        context.goNamed('review-order');
+      } on ProviderNotFoundException {
+        context.goNamed(
+          'payment-method',
+          extra: _checkout.toExtra(PaymentMethod.card),
+        );
+      }
     }
   }
 
@@ -77,19 +85,34 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   }
 
   Future<void> _submit() async {
+    if (_submitting || _completed) return;
     FocusScope.of(context).unfocus();
-    if (_submitting || _formKey.currentState?.validate() != true) return;
-
-    // This project has no payment gateway. The form values remain in memory
-    // only and are never sent to the order service.
+    if (_formKey.currentState?.validate() != true) return;
+    if (_checkout.orderDraft == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Checkout details are unavailable. Please review your order again.',
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => _submitting = true);
     try {
-      final order = await _payments.confirm(_checkout, PaymentMethod.card);
+      final order = await (widget.demoPayments ?? DemoPaymentService()).confirm(
+        _checkout,
+        PaymentMethod.card,
+      );
+      if (order == null) throw StateError('Order was not saved');
       if (!mounted) return;
-      _cardNumberController.clear();
-      _cardHolderController.clear();
-      _expiryController.clear();
-      _cvvController.clear();
+      try {
+        context.read<CartProvider>().removePurchased(order.items);
+        context.read<CheckoutProvider>().recordPaymentAttempt('demo');
+      } on ProviderNotFoundException {
+        // Standalone widget tests may omit app providers.
+      }
+      _completed = true;
       context.goNamed(
         'payment-result',
         extra: _checkout.successExtra(PaymentMethod.card, order),
@@ -98,7 +121,9 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('The order could not be saved. Please try again.'),
+            content: Text(
+              'Payment or order saving failed. Your cart was kept. Please retry.',
+            ),
           ),
         );
       }
@@ -123,7 +148,7 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
           centerTitle: true,
           leading: IconButton(
             tooltip: 'Back',
-            onPressed: _submitting ? null : _back,
+            onPressed: _back,
             icon: const Icon(Icons.arrow_back),
           ),
           title: const Text('Card Payment'),
@@ -257,7 +282,7 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
-                                  'Demo payment only. No real charge is made.',
+                                  'Payment details stay on this device. No charge is made.',
                                   textAlign: TextAlign.center,
                                   style: textTheme.bodySmall?.copyWith(
                                     color: AppColors.secondaryText,
@@ -278,8 +303,8 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                   width: double.infinity,
                   height: 54,
                   child: PrimaryButton(
-                    label: _submitting ? 'Saving order...' : _payButtonLabel,
-                    onPressed: _submitting ? null : _submit,
+                    label: _submitting ? 'Processing...' : _payButtonLabel,
+                    onPressed: _submitting || _completed ? null : _submit,
                   ),
                 ),
               ),
@@ -334,6 +359,20 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
     if (!RegExp(r'^\d{16}$').hasMatch(digits)) {
       return 'Enter a valid card number';
     }
+    var sum = 0;
+    for (
+      var index = digits.length - 1, position = 0;
+      index >= 0;
+      index--, position++
+    ) {
+      var digit = int.parse(digits[index]);
+      if (position.isOdd) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+      sum += digit;
+    }
+    if (sum % 10 != 0) return 'Check the card number';
     return null;
   }
 
@@ -346,6 +385,12 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   static String? _validateExpiry(String? value) {
     final match = RegExp(r'^(0[1-9]|1[0-2])/(\d{2})$').firstMatch(value ?? '');
     if (match == null) return 'Use MM/YY';
+    final now = DateTime.now();
+    final year = 2000 + int.parse(match.group(2)!);
+    final month = int.parse(match.group(1)!);
+    if (year < now.year || (year == now.year && month < now.month)) {
+      return 'Card has expired';
+    }
     return null;
   }
 

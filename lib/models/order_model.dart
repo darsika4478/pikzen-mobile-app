@@ -11,6 +11,7 @@ class OrderModel {
     required List<CartItemModel> items,
     required this.createdAt,
     this.pickupAt,
+    this.replacementPreference,
     this.status,
     this.completedAt,
     this.shopId,
@@ -25,6 +26,8 @@ class OrderModel {
     this.readyAt,
     this.collectedAt,
     this.cancelledAt,
+    this.cancellationReason,
+    this.cancellationNote,
   }) : items = List<CartItemModel>.unmodifiable(items);
 
   final String id;
@@ -34,6 +37,7 @@ class OrderModel {
   final List<CartItemModel> items;
   final DateTime createdAt;
   final DateTime? pickupAt;
+  final String? replacementPreference;
 
   /// Optional lifecycle fields when provided by the shared order source.
   final String? status;
@@ -50,6 +54,8 @@ class OrderModel {
   final DateTime? readyAt;
   final DateTime? collectedAt;
   final DateTime? cancelledAt;
+  final String? cancellationReason;
+  final String? cancellationNote;
 
   int get calculatedTotalMinor => items.fold<int>(
     0,
@@ -72,6 +78,7 @@ class OrderModel {
     items: items,
     createdAt: createdAt,
     pickupAt: pickupAt,
+    replacementPreference: replacementPreference,
     status: status ?? this.status,
     completedAt: completedAt,
     shopId: shopId,
@@ -86,6 +93,8 @@ class OrderModel {
     readyAt: readyAt,
     collectedAt: collectedAt,
     cancelledAt: cancelledAt,
+    cancellationReason: cancellationReason,
+    cancellationNote: cancellationNote,
   );
 
   Map<String, dynamic> toFirestore({bool serverTimestamps = false}) => {
@@ -112,6 +121,7 @@ class OrderModel {
     'paymentStatus': paymentStatus,
     'status': status,
     'pickupAt': pickupAt,
+    'replacementPreference': replacementPreference,
     'createdAt': serverTimestamps
         ? FieldValue.serverTimestamp()
         : Timestamp.fromDate(createdAt),
@@ -131,6 +141,8 @@ class OrderModel {
     'cancelledAt': cancelledAt == null
         ? null
         : Timestamp.fromDate(cancelledAt!),
+    if (cancellationReason != null) 'cancellationReason': cancellationReason,
+    if (cancellationNote != null) 'cancellationNote': cancellationNote,
     'completedAt': completedAt == null
         ? null
         : Timestamp.fromDate(completedAt!),
@@ -175,6 +187,7 @@ class OrderModel {
       items: items,
       createdAt: createdAt,
       pickupAt: _dateValue(data['pickupAt']),
+      replacementPreference: data['replacementPreference'] as String?,
       status: data['status'] as String?,
       completedAt: _dateValue(data['completedAt']),
       shopId: data['shopId'] as String?,
@@ -191,6 +204,8 @@ class OrderModel {
       readyAt: _dateValue(data['readyAt']),
       collectedAt: _dateValue(data['collectedAt']),
       cancelledAt: _dateValue(data['cancelledAt']),
+      cancellationReason: data['cancellationReason'] as String?,
+      cancellationNote: data['cancellationNote'] as String?,
     );
   }
 }

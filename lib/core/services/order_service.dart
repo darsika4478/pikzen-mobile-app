@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../../models/cart_item_model.dart';
 import '../../models/order_model.dart';
@@ -10,6 +13,16 @@ class OrderActionException implements Exception {
   final String message;
   @override
   String toString() => message;
+}
+
+enum CancellationReason {
+  changedMind('Changed my mind'),
+  wrongPickupTime('Selected wrong pickup time'),
+  foundElsewhere('Found items elsewhere'),
+  other('Other reason');
+
+  const CancellationReason(this.label);
+  final String label;
 }
 
 /// One Firestore source for customer and shop order operations.
@@ -32,12 +45,23 @@ class OrderService {
   CollectionReference<Map<String, dynamic>> get _orders =>
       database.collection('orders');
 
-  String allocateOrderId() => _orders.doc().id;
+  String allocateOrderId() {
+    if (Firebase.apps.isNotEmpty || _database != null) return _orders.doc().id;
+    // Keeps isolated widget tests independent of Firebase initialization.
+    const alphabet =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return List.generate(
+      20,
+      (_) => alphabet[random.nextInt(alphabet.length)],
+    ).join();
+  }
 
   OrderModel newDraft({
     required String customerId,
     required List<CartItemModel> items,
     required DateTime? pickupAt,
+    String? replacementPreference,
     String? shopId,
     String? shopName,
   }) {
@@ -55,6 +79,7 @@ class OrderService {
       items: items,
       createdAt: DateTime.now(),
       pickupAt: pickupAt,
+      replacementPreference: replacementPreference,
       status: 'placed',
       shopId: shopId,
       shopName: shopName,
@@ -81,6 +106,28 @@ class OrderService {
             ? OrderModel.fromFirestore(snapshot.id, snapshot.data()!)
             : null,
       );
+
+  Future<void> markCustomerView(String orderId, String field) async {
+    if (!const {
+      'paymentSuccessViewedAt',
+      'confirmationViewedAt',
+      'trackingViewedAt',
+      'ordersListViewedAt',
+      'orderDetailsViewedAt',
+    }.contains(field)) {
+      throw const OrderActionException('Unsupported view event.');
+    }
+    final uid = auth.currentUser?.uid;
+    if (uid == null) {
+      throw const OrderActionException('Sign in to view this order.');
+    }
+    final ref = _orders.doc(orderId);
+    final snapshot = await ref.get();
+    if (!snapshot.exists || snapshot.data()?['customerId'] != uid) {
+      throw const OrderActionException('This order is unavailable.');
+    }
+    await ref.update({field: FieldValue.serverTimestamp()});
+  }
 
   Future<OrderModel> createOrderOnce(
     OrderModel draft, {
@@ -116,7 +163,17 @@ class OrderService {
     await database.runTransaction((transaction) async {
       final snapshot = await transaction.get(ref);
       if (snapshot.exists) {
-        if (snapshot.data()?['customerId'] != customerId) {
+        final existing = OrderModel.fromFirestore(
+          snapshot.id,
+          snapshot.data()!,
+        );
+        if (existing.userId != customerId ||
+            existing.paymentMethod != paymentMethod ||
+            existing.paymentStatus != paymentStatus ||
+            existing.effectiveTotalMinor != draft.effectiveTotalMinor ||
+            existing.pickupAt != draft.pickupAt ||
+            existing.replacementPreference != draft.replacementPreference ||
+            !_sameItems(existing.items, draft.items)) {
           throw const OrderActionException('This order ID is already in use.');
         }
         return;
@@ -137,10 +194,18 @@ class OrderService {
     return OrderModel.fromFirestore(saved.id, saved.data()!);
   }
 
-  Future<void> cancelOrder(String orderId) async {
+  Future<void> cancelOrder(
+    String orderId, {
+    required CancellationReason reason,
+    String? note,
+  }) async {
     final customerId = auth.currentUser?.uid;
     if (customerId == null) {
       throw const OrderActionException('Sign in before cancelling an order.');
+    }
+    final trimmedNote = note?.trim() ?? '';
+    if (trimmedNote.length > 500) {
+      throw const OrderActionException('The cancellation note is too long.');
     }
     final ref = _orders.doc(orderId);
     await database.runTransaction((transaction) async {
@@ -166,6 +231,8 @@ class OrderService {
       }
       transaction.update(ref, {
         'status': 'cancelled',
+        'cancellationReason': reason.name,
+        'cancellationNote': trimmedNote.isEmpty ? null : trimmedNote,
         'cancelledAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -274,4 +341,17 @@ class OrderService {
     'ready' => next == 'collected',
     _ => false,
   };
+
+  static bool _sameItems(List<CartItemModel> left, List<CartItemModel> right) {
+    if (left.length != right.length) return false;
+    for (var i = 0; i < left.length; i++) {
+      if (left[i].product.id != right[i].product.id ||
+          left[i].quantity != right[i].quantity ||
+          left[i].product.priceMinor != right[i].product.priceMinor ||
+          left[i].unit != right[i].unit) {
+        return false;
+      }
+    }
+    return true;
+  }
 }

@@ -15,10 +15,14 @@ import '../../features/auth/screens/shop_approval_status_screen.dart';
 import '../../features/cart_checkout/screens/cart_screen.dart';
 import '../../features/cart_checkout/screens/checkout_screen.dart';
 import '../../features/cart_checkout/screens/order_confirmation_screen.dart';
+import '../../features/cart_checkout/screens/order_placed_screen.dart';
 import '../../features/cart_checkout/screens/pickup_date_screen.dart';
 import '../../features/cart_checkout/screens/pickup_time_screen.dart';
+import '../../features/cart_checkout/screens/replacement_preference_screen.dart';
+import '../../features/cart_checkout/screens/review_order_screen.dart';
 import '../../features/payments_tracking/screens/my_orders_screen.dart';
 import '../../features/payments_tracking/screens/customer_order_details_screen.dart';
+import '../../features/payments_tracking/screens/order_cancellation_screen.dart';
 import '../../features/payments_tracking/screens/notifications_screen.dart';
 import '../../features/payments_tracking/screens/notification_detail_screen.dart';
 import '../../features/payments_tracking/screens/order_history_screen.dart';
@@ -125,6 +129,16 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) => const CartScreen(),
         ),
         GoRoute(
+          path: '/checkout',
+          name: 'checkout',
+          builder: (context, state) => const CheckoutScreen(),
+        ),
+        GoRoute(
+          path: '/pickup-date',
+          name: 'pickup-date',
+          builder: (context, state) => const PickupDateScreen(),
+        ),
+        GoRoute(
           path: '/favourites',
           name: 'favourites',
           builder: (context, state) => const FavouritesScreen(),
@@ -161,6 +175,11 @@ final GoRouter appRouter = GoRouter(
           path: '/order-history',
           name: 'order-history',
           builder: (context, state) => const OrderHistoryScreen(),
+        ),
+        GoRoute(
+          path: '/my-orders',
+          name: 'my-orders',
+          builder: (context, state) => const MyOrdersScreen(),
         ),
       ],
     ),
@@ -205,6 +224,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/order-confirmation',
       name: 'order-confirmation',
+      builder: (context, state) => OrderPlacedScreen(
+        orderId: state.extra is String ? state.extra as String : null,
+      ),
+    ),
+    GoRoute(
+      path: '/cash-order-confirmation',
+      name: 'cash-order-confirmation',
       builder: (context, state) {
         final checkout = PaymentCheckoutData.fromExtra(state.extra);
         return OrderConfirmationScreen(
@@ -216,26 +242,48 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: '/pickup-date',
-      name: 'pickup-date',
-      builder: (context, state) => const PickupDateScreen(),
-    ),
-    GoRoute(
       path: '/pickup-time',
       name: 'pickup-time',
       builder: (context, state) => const PickupTimeScreen(),
     ),
     GoRoute(
-      path: '/my-orders',
-      name: 'my-orders',
-      builder: (context, state) => const MyOrdersScreen(),
+      path: '/review-order',
+      name: 'review-order',
+      builder: (context, state) => const ReviewOrderScreen(),
+    ),
+    GoRoute(
+      path: '/replacement-preference',
+      name: 'replacement-preference',
+      builder: (context, state) => ReplacementPreferenceScreen(
+        fromPickup: state.uri.queryParameters['fromPickup'] == 'true',
+        returnToReview: state.uri.queryParameters['returnToReview'] == 'true',
+      ),
     ),
     GoRoute(
       path: '/order-details',
       name: 'order-details',
       builder: (context, state) => CustomerOrderDetailsScreen(
         order: state.extra is OrderModel ? state.extra as OrderModel : null,
-        orderId: state.extra is String ? state.extra as String : null,
+        orderId: state.extra is String
+            ? state.extra as String
+            : state.extra is Map
+            ? (state.extra as Map)['orderId'] as String?
+            : null,
+        showCancellationSuccess:
+            state.extra is Map &&
+            (state.extra as Map)['showCancellationSuccess'] == true,
+      ),
+    ),
+    GoRoute(
+      path: '/order-cancellation',
+      name: 'order-cancellation',
+      builder: (context, state) => OrderCancellationScreen(
+        orderId: state.extra is String
+            ? state.extra as String
+            : state.extra is OrderModel
+            ? (state.extra as OrderModel).id
+            : null,
+        order: state.extra is OrderModel ? state.extra as OrderModel : null,
       ),
     ),
     GoRoute(
@@ -402,7 +450,7 @@ class _CustomerNavigationShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final index = location == '/edit-profile' ? 4 : _paths.indexOf(location);
+    final index = _paths.indexOf(location);
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(

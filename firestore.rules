@@ -55,9 +55,39 @@ service cloud.firestore {
         && resource.data.status in ['placed', 'pending', 'accepted', 'confirmed', 'preparing']
         && request.resource.data.status == 'cancelled'
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'updatedAt', 'cancelledAt'])
+          .hasOnly([
+            'status', 'updatedAt', 'cancelledAt',
+            'cancellationReason', 'cancellationNote'
+          ])
+        && request.resource.data.cancellationReason in [
+          'changedMind', 'wrongPickupTime', 'foundElsewhere', 'other'
+        ]
+        && (request.resource.data.cancellationNote == null
+          || (request.resource.data.cancellationNote is string
+            && request.resource.data.cancellationNote.size() <= 500))
         && request.resource.data.updatedAt == request.time
         && request.resource.data.cancelledAt == request.time;
+    }
+
+    function customerCanRecordView() {
+      let changes = request.resource.data.diff(resource.data).affectedKeys();
+      return customerAccount()
+        && resource.data.customerId == request.auth.uid
+        && changes.hasOnly([
+          'paymentSuccessViewedAt', 'confirmationViewedAt', 'trackingViewedAt',
+          'ordersListViewedAt', 'orderDetailsViewedAt'
+        ])
+        && changes.size() == 1
+        && (!changes.hasAny(['paymentSuccessViewedAt'])
+          || request.resource.data.paymentSuccessViewedAt == request.time)
+        && (!changes.hasAny(['confirmationViewedAt'])
+          || request.resource.data.confirmationViewedAt == request.time)
+        && (!changes.hasAny(['trackingViewedAt'])
+          || request.resource.data.trackingViewedAt == request.time)
+        && (!changes.hasAny(['ordersListViewedAt'])
+          || request.resource.data.ordersListViewedAt == request.time)
+        && (!changes.hasAny(['orderDetailsViewedAt'])
+          || request.resource.data.orderDetailsViewedAt == request.time);
     }
 
     function shopCanAdvanceOrder() {
@@ -133,6 +163,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'id', 'customerId', 'shopId', 'shopName', 'items', 'totalMinor',
           'currencyCode', 'paymentMethod', 'paymentStatus', 'status', 'pickupAt',
+          'replacementPreference',
           'createdAt', 'updatedAt', 'acceptedAt', 'preparingAt', 'readyAt',
           'collectedAt', 'cancelledAt', 'completedAt'
         ])
@@ -157,12 +188,17 @@ service cloud.firestore {
               && request.resource.data.paymentStatus == 'unpaid'))
         && request.resource.data.status == 'placed'
         && (request.resource.data.pickupAt == null || request.resource.data.pickupAt is timestamp)
+        && (!('replacementPreference' in request.resource.data)
+          || request.resource.data.replacementPreference == null
+          || request.resource.data.replacementPreference in [
+            'allowReplacement', 'contactMe', 'noReplacement'
+          ])
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
       allow get, list: if (customerAccount() && resource.data.customerId == request.auth.uid)
         || (approvedShop() && resource.data.shopId == request.auth.uid);
-      allow update: if customerCanCancel() || shopCanAdvanceOrder();
+      allow update: if customerCanCancel() || customerCanRecordView() || shopCanAdvanceOrder();
       allow delete: if false;
     }
 

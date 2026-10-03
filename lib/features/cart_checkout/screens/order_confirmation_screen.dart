@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/payment_service.dart';
@@ -7,6 +8,7 @@ import '../../../models/order_model.dart';
 import '../../../models/payment_model.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../payments_tracking/widgets/payment_summary_card.dart';
+import '../providers/cart_provider.dart';
 
 /// Cash is confirmed explicitly; opening this screen never saves an order.
 class OrderConfirmationScreen extends StatefulWidget {
@@ -62,6 +64,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         PaymentMethod.cashOnPickup,
       );
       if (!mounted) return;
+      if (order == null) throw StateError('Order was not saved');
+      context.read<CartProvider>().removePurchased(order.items);
       context.goNamed(
         'payment-result',
         extra: _checkout.successExtra(PaymentMethod.cashOnPickup, order),
