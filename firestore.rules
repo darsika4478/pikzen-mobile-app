@@ -115,6 +115,20 @@ service cloud.firestore {
 
     match /users/{uid} {
       function owner() { return signedIn() && request.auth.uid == uid; }
+      function validCustomerPreferenceUpdate() {
+        let after = request.resource.data.get('preferences', {});
+        let before = resource.data.get('preferences', {});
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['preferences'])
+          || (resource.data.role == 'customer'
+            && after is map
+            && after.keys().hasAny(['readyForPickupSms', 'paperlessInvoices', 'pushNotifications'])
+            && after.get('readyForPickupSms', false) is bool
+            && after.get('paperlessInvoices', false) is bool
+            && after.get('pushNotifications', false) is bool
+            && after.diff(before).affectedKeys().hasOnly([
+              'readyForPickupSms', 'paperlessInvoices', 'pushNotifications'
+            ]));
+      }
       function publicRole() {
         let data = request.resource.data;
         return (data.role == 'customer' && !('approvalStatus' in data))
@@ -132,9 +146,10 @@ service cloud.firestore {
         && (request.resource.data.phone == null || request.resource.data.phone is string)
         && request.resource.data.createdAt == request.time;
       allow update: if (owner()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'phone'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'phone', 'preferences'])
         && request.resource.data.fullName is string
-        && (request.resource.data.phone == null || request.resource.data.phone is string))
+        && (request.resource.data.phone == null || request.resource.data.phone is string)
+        && validCustomerPreferenceUpdate())
         || (admin()
           && resource.data.role == 'shop'
           && resource.data.approvalStatus == 'pending'
