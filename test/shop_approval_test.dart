@@ -1,13 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:pikzen/core/router/app_router.dart';
 import 'package:pikzen/core/services/auth_service.dart';
 import 'package:pikzen/core/services/firestore_service.dart';
 import 'package:pikzen/core/theme/app_theme.dart';
 import 'package:pikzen/features/auth/providers/auth_provider.dart';
+import 'package:pikzen/features/auth/screens/shop_approval_status_screen.dart';
 import 'package:pikzen/features/auth/widgets/auth_ui.dart';
+import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
+import 'package:pikzen/features/product_discovery/providers/product_provider.dart';
 import 'package:pikzen/features/shop_management/screens/shop_dashboard_screen.dart';
 import 'package:pikzen/models/user_model.dart';
 
@@ -102,21 +109,22 @@ void main() {
         final ok = google
             ? await auth.google()
             : await auth.signIn('shop@example.com', 'Password123');
-        expect(ok, status == 'approved');
-        expect(
-          auth.destination,
-          status == 'approved' ? 'shop-dashboard' : null,
-        );
-        if (status == 'pending' || status == null) {
-          expect(auth.error, 'Your shop account is awaiting admin approval.');
-        } else if (status == 'rejected') {
-          expect(auth.error, 'Your shop account was not approved.');
-        }
+        expect(ok, status != 'invalid');
+        expect(auth.destination, switch (status) {
+          null || 'pending' => 'shop-pending',
+          'approved' => 'shop-dashboard',
+          'rejected' => 'shop-rejected',
+          _ => null,
+        });
+        expect(auth.error, status == 'invalid' ? isNotNull : isNull);
       }
     });
   }
-  test('Registration returns pending shop completion rather than a dashboard destination', () async {
-    final auth = AuthProvider(service: FakeAuthService(), restore: false);
+  test('Registration routes pending shop to its status screen', () async {
+    final auth = AuthProvider(
+      service: FakeAuthService(role: 'shop', approvalStatus: 'pending'),
+      restore: false,
+    );
     addTearDown(auth.dispose);
     expect(
       await auth.register(
@@ -129,7 +137,7 @@ void main() {
       isTrue,
     );
     expect(auth.user?.approvalStatus, 'pending');
-    expect(auth.destination, isNull);
+    expect(auth.destination, 'shop-pending');
     expect(
       await auth.register(
         'Name',
@@ -147,14 +155,25 @@ void main() {
     WidgetTester tester,
     String path, {
     UserModel? user,
+    FakeAuthService? service,
   }) async {
-    final auth = AuthProvider(service: FakeAuthService(), restore: false)
-      ..user = user;
+    final auth = AuthProvider(
+      service: service ?? FakeAuthService(),
+      restore: false,
+    )..user = user;
+    final cart = CartProvider();
+    final products = ProductProvider();
     addTearDown(auth.dispose);
+    addTearDown(cart.dispose);
+    addTearDown(products.dispose);
     appRouter.go(path);
     await tester.pumpWidget(
       MultiProvider(
-        providers: [ChangeNotifierProvider.value(value: auth)],
+        providers: [
+          ChangeNotifierProvider.value(value: auth),
+          ChangeNotifierProvider.value(value: cart),
+          ChangeNotifierProvider.value(value: products),
+        ],
         child: MaterialApp.router(
           theme: AppTheme.lightTheme,
           routerConfig: appRouter,
@@ -163,6 +182,47 @@ void main() {
     );
     await tester.pumpAndSettle();
     return auth;
+  }
+
+  for (final (role, status, expectedPath) in [
+    ('customer', null, '/customer-home'),
+    ('shop', null, '/shop-pending'),
+    ('shop', 'pending', '/shop-pending'),
+    ('shop', 'approved', '/shop-dashboard'),
+    ('shop', 'rejected', '/shop-rejected'),
+    ('admin', null, '/admin/users'),
+  ]) {
+    testWidgets('Common Login routes $role/$status to $expectedPath', (
+      tester,
+    ) async {
+      await mount(
+        tester,
+        '/login',
+        service: FakeAuthService(role: role, approvalStatus: status),
+      );
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        'shop@example.com',
+      );
+      await tester.enterText(find.byType(TextFormField).at(1), 'Password123');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.widgetWithText(ElevatedButton, 'Sign In'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.ensureVisible(find.text('Sign In'));
+      await tester.tap(find.text('Sign In'));
+      await tester.pumpAndSettle();
+      expect(appRouter.routeInformationProvider.value.uri.path, expectedPath);
+      if (role != 'shop' || status == 'approved') {
+        expect(find.byType(ShopApprovalStatusScreen), findsNothing);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
   }
 
   for (final role in ['customer', 'shop']) {
@@ -207,6 +267,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(auth.user?.role, role);
       if (role == 'shop') {
+        expect(
+          appRouter.routeInformationProvider.value.uri.path,
+          '/shop-pending',
+        );
         expect(find.text('Registration Submitted'), findsOneWidget);
         expect(
           find.text('Your shop account is awaiting admin approval.'),
@@ -216,6 +280,7 @@ void main() {
         await tester.tap(find.text('Back to Login'));
         await tester.pumpAndSettle();
         expect(appRouter.routeInformationProvider.value.uri.path, '/login');
+        expect(auth.user, isNull);
       } else {
         expect(
           appRouter.routeInformationProvider.value.uri.path,
@@ -242,11 +307,118 @@ void main() {
           await tester.pumpAndSettle();
           expect(
             appRouter.routeInformationProvider.value.uri.path,
-            status == 'approved' ? path : '/login',
+            switch (status) {
+              null || 'pending' => '/shop-pending',
+              'rejected' => '/shop-rejected',
+              _ => path,
+            },
           );
         }
       }
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('Rejected shop sees status and Back to Login signs out', (
+    tester,
+  ) async {
+    final auth = await mount(
+      tester,
+      '/login',
+      user: const UserModel(
+        id: 'shop',
+        name: 'Shop Owner',
+        email: 'shop@example.com',
+        role: 'shop',
+        approvalStatus: 'rejected',
+      ),
+    );
+    appRouter.goNamed('shop-rejected');
+    await tester.pumpAndSettle();
+    expect(find.text('Shop Account Not Approved'), findsOneWidget);
+    expect(find.text('NOT APPROVED'), findsOneWidget);
+    await tester.tap(find.text('Back to Login'));
+    await tester.pumpAndSettle();
+    expect(auth.user, isNull);
+    expect(appRouter.routeInformationProvider.value.uri.path, '/login');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final decision in ['approved', 'rejected']) {
+    testWidgets(
+      'Live pending decision $decision opens the correct destination',
+      (tester) async {
+        final changes = StreamController<Map<String, dynamic>?>.broadcast();
+        addTearDown(changes.close);
+        final auth = AuthProvider(
+          service: FakeAuthService(role: 'shop', approvalStatus: 'pending'),
+          restore: false,
+        );
+        addTearDown(auth.dispose);
+        expect(await auth.signIn('shop@example.com', 'Password123'), isTrue);
+        final router = GoRouter(
+          initialLocation: '/shop-pending',
+          routes: [
+            GoRoute(
+              path: '/shop-pending',
+              name: 'shop-pending',
+              builder: (_, _) => ShopApprovalStatusScreen(
+                rejected: false,
+                profileDocuments: (_) => changes.stream,
+              ),
+            ),
+            GoRoute(
+              path: '/shop-dashboard',
+              name: 'shop-dashboard',
+              builder: (_, _) =>
+                  const Scaffold(body: Text('Existing Shop Dashboard')),
+            ),
+            GoRoute(
+              path: '/shop-rejected',
+              name: 'shop-rejected',
+              builder: (_, _) =>
+                  const Scaffold(body: Text('Rejected destination')),
+            ),
+            GoRoute(
+              path: '/login',
+              name: 'login',
+              builder: (_, _) => const Scaffold(body: Text('Common Login')),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ChangeNotifierProvider<AuthProvider>.value(
+            value: auth,
+            child: MaterialApp.router(
+              theme: AppTheme.lightTheme,
+              routerConfig: router,
+            ),
+          ),
+        );
+        await tester.pump();
+        changes.add({'role': 'shop', 'approvalStatus': 'pending'});
+        await tester.pumpAndSettle();
+        expect(find.text('Registration Submitted'), findsOneWidget);
+        changes.add({'role': 'shop', 'approvalStatus': decision});
+        await tester.pumpAndSettle();
+        expect(
+          auth.destination,
+          decision == 'approved' ? 'shop-dashboard' : 'shop-rejected',
+        );
+        expect(
+          router.routeInformationProvider.value.uri.path,
+          decision == 'approved' ? '/shop-dashboard' : '/shop-rejected',
+        );
+        expect(
+          find.text(
+            decision == 'approved'
+                ? 'Existing Shop Dashboard'
+                : 'Rejected destination',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
 }

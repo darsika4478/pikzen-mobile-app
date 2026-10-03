@@ -2,15 +2,140 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function admin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    // Shared catalog: shopId is the approved shop owner's Auth UID.
+    match /products/{productId} {
+      function approvedOwner(shopId) {
+        return request.auth != null && request.auth.uid == shopId
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'shop'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+      }
+      function validProduct() {
+        let data = request.resource.data;
+        return data.name is string && data.category is string
+          && data.priceMinor is int && data.priceMinor >= 0
+          && data.stockQuantity is int && data.stockQuantity >= 0
+          && (!('lowStockThreshold' in data) || (data.lowStockThreshold is int && data.lowStockThreshold >= 0));
+      }
+      allow read: if request.auth != null;
+      allow create: if approvedOwner(request.resource.data.shopId) && validProduct();
+      allow update: if approvedOwner(resource.data.shopId)
+        && request.resource.data.shopId == resource.data.shopId && validProduct();
+      allow delete: if false;
+    }
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function customerAccount() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+    }
+
+    function approvedShop() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'shop'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+    }
+
+    function validPaymentMethod(method) {
+      return method in ['card', 'ewallet', 'onlineBanking', 'cashOnPickup'];
+    }
+
+    function validOrderStatus(status) {
+      return status in ['placed', 'accepted', 'preparing', 'ready', 'collected', 'cancelled'];
+    }
+
+    function customerCanCancel() {
+      return customerAccount()
+        && resource.data.customerId == request.auth.uid
+        && resource.data.status in ['placed', 'pending', 'accepted', 'confirmed', 'preparing']
+        && request.resource.data.status == 'cancelled'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'status', 'updatedAt', 'cancelledAt',
+            'cancellationReason', 'cancellationNote'
+          ])
+        && request.resource.data.cancellationReason in [
+          'changedMind', 'wrongPickupTime', 'foundElsewhere', 'other'
+        ]
+        && (request.resource.data.cancellationNote == null
+          || (request.resource.data.cancellationNote is string
+            && request.resource.data.cancellationNote.size() <= 500))
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.cancelledAt == request.time;
+    }
+
+    function customerCanRecordView() {
+      let changes = request.resource.data.diff(resource.data).affectedKeys();
+      return customerAccount()
+        && resource.data.customerId == request.auth.uid
+        && changes.hasOnly([
+          'paymentSuccessViewedAt', 'confirmationViewedAt', 'trackingViewedAt',
+          'ordersListViewedAt', 'orderDetailsViewedAt'
+        ])
+        && changes.size() == 1
+        && (!changes.hasAny(['paymentSuccessViewedAt'])
+          || request.resource.data.paymentSuccessViewedAt == request.time)
+        && (!changes.hasAny(['confirmationViewedAt'])
+          || request.resource.data.confirmationViewedAt == request.time)
+        && (!changes.hasAny(['trackingViewedAt'])
+          || request.resource.data.trackingViewedAt == request.time)
+        && (!changes.hasAny(['ordersListViewedAt'])
+          || request.resource.data.ordersListViewedAt == request.time)
+        && (!changes.hasAny(['orderDetailsViewedAt'])
+          || request.resource.data.orderDetailsViewedAt == request.time);
+    }
+
+    function shopCanAdvanceOrder() {
+      let before = resource.data.status == null ? 'placed' : resource.data.status;
+      let after = request.resource.data.status;
+      let changes = request.resource.data.diff(resource.data).affectedKeys();
+      return approvedShop()
+        && resource.data.shopId == request.auth.uid
+        && validOrderStatus(after)
+        && changes.hasOnly([
+          'status', 'updatedAt', 'acceptedAt', 'preparingAt', 'readyAt',
+          'collectedAt', 'completedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && ((before in ['placed', 'pending'] && after == 'accepted'
+              && request.resource.data.acceptedAt == request.time)
+          || (before in ['accepted', 'confirmed'] && after == 'preparing'
+              && request.resource.data.preparingAt == request.time)
+          || (before == 'preparing' && after == 'ready'
+              && request.resource.data.readyAt == request.time)
+          || (before == 'ready' && after == 'collected'
+              && request.resource.data.collectedAt == request.time
+              && request.resource.data.completedAt == request.time));
+    }
+
     match /users/{uid} {
-      function owner() { return request.auth != null && request.auth.uid == uid; }
+      function owner() { return signedIn() && request.auth.uid == uid; }
+      function validCustomerPreferenceUpdate() {
+        let after = request.resource.data.get('preferences', {});
+        let before = resource.data.get('preferences', {});
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['preferences'])
+          || (resource.data.role == 'customer'
+            && after is map
+            && after.keys().hasAny(['readyForPickupSms', 'paperlessInvoices', 'pushNotifications'])
+            && after.get('readyForPickupSms', false) is bool
+            && after.get('paperlessInvoices', false) is bool
+            && after.get('pushNotifications', false) is bool
+            && after.diff(before).affectedKeys().hasOnly([
+              'readyForPickupSms', 'paperlessInvoices', 'pushNotifications'
+            ]));
+      }
       function publicRole() {
         let data = request.resource.data;
         return (data.role == 'customer' && !('approvalStatus' in data))
           || (data.role == 'shop' && data.approvalStatus == 'pending');
       }
-      allow get: if owner();
-      allow list: if false;
+      allow get: if owner() || admin();
+      allow list: if admin();
       allow create: if owner()
         && request.resource.data.keys().hasOnly(['uid', 'fullName', 'email', 'phone', 'role', 'createdAt', 'approvalStatus'])
         && request.resource.data.keys().hasAll(['uid', 'fullName', 'email', 'phone', 'role', 'createdAt'])
@@ -20,8 +145,99 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email
         && (request.resource.data.phone == null || request.resource.data.phone is string)
         && request.resource.data.createdAt == request.time;
-      // Profile role and approval decisions are never client-editable.
-      allow update: if false;
+      allow update: if (owner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'phone', 'preferences'])
+        && request.resource.data.fullName is string
+        && (request.resource.data.phone == null || request.resource.data.phone is string)
+        && validCustomerPreferenceUpdate())
+        || (admin()
+          && resource.data.role == 'shop'
+          && resource.data.approvalStatus == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus'])
+          && request.resource.data.approvalStatus in ['approved', 'rejected']);
+      allow delete: if false;
+    }
+
+    match /orders/{orderId} {
+      allow create: if customerAccount()
+        && request.resource.data.keys().hasOnly([
+          'id', 'customerId', 'shopId', 'shopName', 'items', 'totalMinor',
+          'currencyCode', 'paymentMethod', 'paymentStatus', 'status', 'pickupAt',
+          'replacementPreference',
+          'createdAt', 'updatedAt', 'acceptedAt', 'preparingAt', 'readyAt',
+          'collectedAt', 'cancelledAt', 'completedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'id', 'customerId', 'items', 'totalMinor', 'currencyCode',
+          'paymentMethod', 'paymentStatus', 'status', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.id == orderId
+        && request.resource.data.customerId == request.auth.uid
+        && (request.resource.data.shopId == null || request.resource.data.shopId is string)
+        && (request.resource.data.shopName == null || request.resource.data.shopName is string)
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.totalMinor is int
+        && request.resource.data.totalMinor >= 0
+        && request.resource.data.currencyCode is string
+        && validPaymentMethod(request.resource.data.paymentMethod)
+        && ((request.resource.data.paymentMethod in ['card', 'ewallet', 'onlineBanking']
+              && request.resource.data.paymentStatus == 'demo')
+          || (request.resource.data.paymentMethod == 'cashOnPickup'
+              && request.resource.data.paymentStatus == 'unpaid'))
+        && request.resource.data.status == 'placed'
+        && (request.resource.data.pickupAt == null || request.resource.data.pickupAt is timestamp)
+        && (!('replacementPreference' in request.resource.data)
+          || request.resource.data.replacementPreference == null
+          || request.resource.data.replacementPreference in [
+            'allowReplacement', 'contactMe', 'noReplacement'
+          ])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow get, list: if (customerAccount() && resource.data.customerId == request.auth.uid)
+        || (approvedShop() && resource.data.shopId == request.auth.uid);
+      allow update: if customerCanCancel() || customerCanRecordView() || shopCanAdvanceOrder();
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      function notificationBelongsToCustomer() {
+        return customerAccount() && resource.data.userId == request.auth.uid;
+      }
+
+      function validShopOrderEvent() {
+        let notification = request.resource.data;
+        let orderPath = /databases/$(database)/documents/orders/$(notification.orderId);
+        let orderAfter = getAfter(orderPath).data;
+        return approvedShop()
+          && notification.keys().hasOnly([
+            'id', 'userId', 'type', 'title', 'message', 'orderId', 'productId',
+            'createdAt', 'isRead'
+          ])
+          && notification.keys().hasAll([
+            'id', 'userId', 'type', 'title', 'message', 'orderId', 'createdAt', 'isRead'
+          ])
+          && notification.id == notificationId
+          && notification.userId == orderAfter.customerId
+          && orderAfter.shopId == request.auth.uid
+          && notification.createdAt == request.time
+          && notification.isRead == false
+          && notification.productId == null
+          && ((notification.type == 'ORDER_ACCEPTED'
+                && notificationId == notification.orderId + '_ORDER_ACCEPTED'
+                && orderAfter.status == 'accepted')
+            || (notification.type == 'ORDER_READY'
+                && notificationId == notification.orderId + '_ORDER_READY'
+                && orderAfter.status == 'ready'));
+      }
+
+      allow get, list: if notificationBelongsToCustomer();
+      allow create: if validShopOrderEvent();
+      allow update: if notificationBelongsToCustomer()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead == true;
       allow delete: if false;
     }
   }
