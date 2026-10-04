@@ -54,42 +54,7 @@ import '../../shared/screens/splash_screen.dart';
 
 // Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/splash',
-  redirect: (context, state) {
-    final auth = context.read<AuthProvider>();
-    final path = state.uri.path;
-    const shopPaths = {
-      '/shop-dashboard',
-      '/add-edit-product',
-      '/incoming-orders',
-      '/inventory',
-      '/prepare-order',
-      '/product-management',
-    };
-    if (path == '/admin/users' && auth.user?.role != 'admin') {
-      return '/login';
-    }
-    if (path == '/shop-pending' || path == '/shop-rejected') {
-      return switch (auth.destination) {
-        'shop-pending' when path == '/shop-pending' => null,
-        'shop-pending' => '/shop-pending',
-        'shop-rejected' when path == '/shop-rejected' => null,
-        'shop-rejected' => '/shop-rejected',
-        'shop-dashboard' => '/shop-dashboard',
-        'customer-home' => '/customer-home',
-        AuthProvider.adminRoute => '/admin/users',
-        _ => '/login',
-      };
-    }
-    if (shopPaths.contains(path) && auth.user?.isApprovedShop != true) {
-      return switch (auth.destination) {
-        'shop-pending' => '/shop-pending',
-        'shop-rejected' => '/shop-rejected',
-        _ => '/login',
-      };
-    }
-    return null;
-  },
+  initialLocation: '/shop-dashboard',
   routes: [
     ShellRoute(
       builder: (context, state, child) =>
@@ -183,12 +148,7 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
-    GoRoute(
-      path: '/admin/users',
-      name: 'admin-users',
-      builder: (context, state) => const AdminUsersScreen(),
-    ),
-    GoRoute(path: '/', redirect: (context, state) => '/splash'),
+    GoRoute(path: '/', redirect: (context, state) => '/shop-dashboard'),
     GoRoute(
       path: '/forgot-password',
       name: 'forgot-password',

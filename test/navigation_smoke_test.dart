@@ -22,28 +22,9 @@ void main() {
   testWidgets('Startup, common login, five tabs, and shared cart/favourites', (
     tester,
   ) async {
-    final auth = AuthProvider(service: FakeAuthService(), restore: false);
-    final cart = CartProvider();
-    final checkout = CheckoutProvider();
-    final products = ProductProvider();
-    addTearDown(auth.dispose);
-    addTearDown(cart.dispose);
-    addTearDown(checkout.dispose);
-    addTearDown(products.dispose);
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: auth),
-          ChangeNotifierProvider.value(value: cart),
-          ChangeNotifierProvider.value(value: checkout),
-          ChangeNotifierProvider.value(value: products),
-        ],
-        child: MaterialApp.router(
-          theme: AppTheme.lightTheme,
-          routerConfig: appRouter,
-        ),
-      ),
-    );
+    await tester.pumpWidget(const PikZenApp());
+    // Keep coverage of the existing customer flow after changing the initial route.
+    appRouter.go('/splash');
     await tester.pumpAndSettle();
     expect(find.byType(SplashScreen), findsOneWidget);
     await tester.pump(const Duration(seconds: 8));
@@ -82,6 +63,41 @@ void main() {
     }
     await tester.tap(find.widgetWithText(NavigationDestination, 'Home'));
     await tester.pumpAndSettle();
+    final list = tester.widget<ListView>(find.byType(ListView));
+    final children =
+        (list.childrenDelegate as SliverChildListDelegate).children;
+    final titles = children
+        .whereType<ListTile>()
+        .map((tile) => (tile.title! as Text).data!)
+        .toList();
+    expect(titles, hasLength(24));
+
+    for (final title in titles) {
+      final scrollable = tester.state<ScrollableState>(
+        find.byType(Scrollable).first,
+      );
+      scrollable.position.jumpTo(0);
+      await tester.pumpAndSettle();
+      final tile = find.widgetWithText(ListTile, title);
+      await tester.scrollUntilVisible(tile, 250);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: title);
+      expect(appRouter.canPop(), isTrue, reason: title);
+      if (title == 'Shop Dashboard') {
+        // The dashboard deliberately has its own header rather than an AppBar.
+        appRouter.pop();
+      } else {
+        expect(find.byType(BackButton), findsOneWidget, reason: title);
+        await tester.tap(find.byType(BackButton));
+      }
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomerHomeScreen), findsOneWidget, reason: title);
+      expect(tester.takeException(), isNull, reason: title);
+    }
     final add = find.text('+ Add').first;
     await tester.scrollUntilVisible(
       add,
