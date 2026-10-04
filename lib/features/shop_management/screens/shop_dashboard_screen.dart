@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../widgets/dashboard_header.dart';
@@ -45,9 +46,7 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
                   ),
                   const SizedBox(height: 22),
                   TodaySummaryCard(
-                    onViewAll: () => _preview(
-                      'Today: 12 new orders and 28 products listed.',
-                    ),
+                    onViewAll: () => context.pushNamed('incoming-orders'),
                   ),
                   const SizedBox(height: 14),
                   IntrinsicHeight(
@@ -90,6 +89,10 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
       bottomNavigationBar: DashboardBottomNav(
         selectedIndex: _selectedIndex,
         onSelected: (index) {
+          if (index == 1) {
+            context.pushNamed('incoming-orders');
+            return;
+          }
           setState(() => _selectedIndex = index);
           if (index != 0) {
             _preview(
