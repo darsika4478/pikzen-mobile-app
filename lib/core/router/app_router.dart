@@ -1,17 +1,35 @@
+import '../../features/cart_checkout/widgets/cart_badge.dart';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
+import '../../features/admin/screens/admin_users_screen.dart';
+
+import '../../features/auth/providers/auth_provider.dart';
 
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
+import '../../features/auth/screens/shop_approval_status_screen.dart';
 import '../../features/cart_checkout/screens/cart_screen.dart';
 import '../../features/cart_checkout/screens/checkout_screen.dart';
 import '../../features/cart_checkout/screens/order_confirmation_screen.dart';
+import '../../features/cart_checkout/screens/order_placed_screen.dart';
 import '../../features/cart_checkout/screens/pickup_date_screen.dart';
 import '../../features/cart_checkout/screens/pickup_time_screen.dart';
+import '../../features/cart_checkout/screens/replacement_preference_screen.dart';
+import '../../features/cart_checkout/screens/review_order_screen.dart';
 import '../../features/payments_tracking/screens/my_orders_screen.dart';
+import '../../features/payments_tracking/screens/customer_order_details_screen.dart';
+import '../../features/payments_tracking/screens/order_cancellation_screen.dart';
 import '../../features/payments_tracking/screens/notifications_screen.dart';
+import '../../features/payments_tracking/screens/notification_detail_screen.dart';
+import '../../features/payments_tracking/screens/order_history_screen.dart';
 import '../../features/payments_tracking/screens/order_tracking_screen.dart';
+import '../../features/payments_tracking/screens/card_payment_screen.dart';
+import '../../features/payments_tracking/screens/payment_selection_screen.dart';
+import '../../features/payments_tracking/screens/payment_failure_screen.dart';
 import '../../features/payments_tracking/screens/payment_method_screen.dart';
 import '../../features/payments_tracking/screens/payment_result_screen.dart';
 import '../../features/product_discovery/screens/categories_screen.dart';
@@ -28,10 +46,13 @@ import '../../features/shop_management/screens/inventory_screen.dart';
 import '../../features/shop_management/screens/prepare_order_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
 import '../../features/shop_management/screens/shop_dashboard_screen.dart';
+import '../../models/order_model.dart';
+import '../../models/notification_model.dart';
+import '../../models/payment_model.dart';
 import '../../shared/screens/onboarding_screen.dart';
 import '../../shared/screens/splash_screen.dart';
 
-// Temporary testing navigation. No authentication checks are performed.
+// Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/shop-dashboard',
   routes: [
@@ -40,6 +61,14 @@ final GoRouter appRouter = GoRouter(
           _CustomerNavigationShell(location: state.uri.path, child: child),
       routes: [
         GoRoute(
+          path: '/search',
+          name: 'search',
+          builder: (context, state) => SearchScreen(
+            query: state.uri.queryParameters['q'] ?? '',
+            category: state.uri.queryParameters['category'],
+          ),
+        ),
+        GoRoute(
           path: '/customer-home',
           name: 'customer-home',
           builder: (context, state) => const CustomerHomeScreen(),
@@ -47,12 +76,32 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '/categories',
           name: 'categories',
-          builder: (context, state) => const CategoriesScreen(),
+          redirect: (context, state) =>
+              state.uri.queryParameters['category'] == null
+              ? null
+              : Uri(
+                  path: '/search',
+                  queryParameters: {
+                    'category': state.uri.queryParameters['category']!,
+                  },
+                ).toString(),
+          builder: (context, state) =>
+              CategoriesScreen(category: state.uri.queryParameters['category']),
         ),
         GoRoute(
-          path: '/search',
-          name: 'search',
-          builder: (context, state) => const SearchScreen(),
+          path: '/cart',
+          name: 'cart',
+          builder: (context, state) => const CartScreen(),
+        ),
+        GoRoute(
+          path: '/checkout',
+          name: 'checkout',
+          builder: (context, state) => const CheckoutScreen(),
+        ),
+        GoRoute(
+          path: '/pickup-date',
+          name: 'pickup-date',
+          builder: (context, state) => const PickupDateScreen(),
         ),
         GoRoute(
           path: '/favourites',
@@ -63,6 +112,39 @@ final GoRouter appRouter = GoRouter(
           path: '/profile',
           name: 'profile',
           builder: (context, state) => const ProfileScreen(),
+        ),
+        GoRoute(
+          path: '/edit-profile',
+          name: 'edit-profile',
+          builder: (context, state) => const EditProfileScreen(),
+        ),
+        GoRoute(
+          path: '/notifications',
+          name: 'notifications',
+          builder: (context, state) => const NotificationsScreen(),
+        ),
+        GoRoute(
+          path: '/notification-details',
+          name: 'notification-details',
+          builder: (context, state) => NotificationDetailScreen(
+            arguments: state.extra is NotificationDetailArguments
+                ? state.extra as NotificationDetailArguments
+                : state.extra is NotificationModel
+                ? NotificationDetailArguments(
+                    notification: state.extra as NotificationModel,
+                  )
+                : null,
+          ),
+        ),
+        GoRoute(
+          path: '/order-history',
+          name: 'order-history',
+          builder: (context, state) => const OrderHistoryScreen(),
+        ),
+        GoRoute(
+          path: '/my-orders',
+          name: 'my-orders',
+          builder: (context, state) => const MyOrdersScreen(),
         ),
       ],
     ),
@@ -83,9 +165,16 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const SignUpScreen(),
     ),
     GoRoute(
-      path: '/cart',
-      name: 'cart',
-      builder: (context, state) => const CartScreen(),
+      path: '/shop-pending',
+      name: 'shop-pending',
+      builder: (context, state) =>
+          const ShopApprovalStatusScreen(rejected: false),
+    ),
+    GoRoute(
+      path: '/shop-rejected',
+      name: 'shop-rejected',
+      builder: (context, state) =>
+          const ShopApprovalStatusScreen(rejected: true),
     ),
     GoRoute(
       path: '/checkout',
@@ -95,12 +184,22 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/order-confirmation',
       name: 'order-confirmation',
-      builder: (context, state) => const OrderConfirmationScreen(),
+      builder: (context, state) => OrderPlacedScreen(
+        orderId: state.extra is String ? state.extra as String : null,
+      ),
     ),
     GoRoute(
-      path: '/pickup-date',
-      name: 'pickup-date',
-      builder: (context, state) => const PickupDateScreen(),
+      path: '/cash-order-confirmation',
+      name: 'cash-order-confirmation',
+      builder: (context, state) {
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
+        return OrderConfirmationScreen(
+          orderDraft: checkout.orderDraft,
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+        );
+      },
     ),
     GoRoute(
       path: '/pickup-time',
@@ -108,43 +207,144 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PickupTimeScreen(),
     ),
     GoRoute(
-      path: '/my-orders',
-      name: 'my-orders',
-      builder: (context, state) => const MyOrdersScreen(),
+      path: '/review-order',
+      name: 'review-order',
+      builder: (context, state) => const ReviewOrderScreen(),
     ),
     GoRoute(
-      path: '/notifications',
-      name: 'notifications',
-      builder: (context, state) => const NotificationsScreen(),
+      path: '/replacement-preference',
+      name: 'replacement-preference',
+      builder: (context, state) => ReplacementPreferenceScreen(
+        fromPickup: state.uri.queryParameters['fromPickup'] == 'true',
+        returnToReview: state.uri.queryParameters['returnToReview'] == 'true',
+      ),
+    ),
+    GoRoute(
+      path: '/order-details',
+      name: 'order-details',
+      builder: (context, state) => CustomerOrderDetailsScreen(
+        order: state.extra is OrderModel ? state.extra as OrderModel : null,
+        orderId: state.extra is String
+            ? state.extra as String
+            : state.extra is Map
+            ? (state.extra as Map)['orderId'] as String?
+            : null,
+        showCancellationSuccess:
+            state.extra is Map &&
+            (state.extra as Map)['showCancellationSuccess'] == true,
+      ),
+    ),
+    GoRoute(
+      path: '/order-cancellation',
+      name: 'order-cancellation',
+      builder: (context, state) => OrderCancellationScreen(
+        orderId: state.extra is String
+            ? state.extra as String
+            : state.extra is OrderModel
+            ? (state.extra as OrderModel).id
+            : null,
+        order: state.extra is OrderModel ? state.extra as OrderModel : null,
+      ),
     ),
     GoRoute(
       path: '/order-tracking',
       name: 'order-tracking',
-      builder: (context, state) => const OrderTrackingScreen(),
+      builder: (context, state) => OrderTrackingScreen(
+        order: state.extra is OrderModel ? state.extra as OrderModel : null,
+        orderId: state.extra is String ? state.extra as String : null,
+      ),
     ),
     GoRoute(
       path: '/payment-method',
       name: 'payment-method',
-      builder: (context, state) => const PaymentMethodScreen(),
+      builder: (context, state) {
+        final args = state.extra is Map ? state.extra as Map : const {};
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
+        final selectedMethod = args['selectedMethod'];
+        return PaymentMethodScreen(
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+          selectedMethod: selectedMethod is String ? selectedMethod : 'card',
+          orderDraft: checkout.orderDraft,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/card-payment',
+      name: 'card-payment',
+      builder: (context, state) {
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
+        return CardPaymentScreen(
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+          orderDraft: checkout.orderDraft,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/ewallet-payment',
+      name: 'ewallet-payment',
+      builder: (context, state) => DemoPaymentSelectionScreen(
+        method: PaymentMethod.ewallet,
+        checkout: PaymentCheckoutData.fromExtra(state.extra),
+      ),
+    ),
+    GoRoute(
+      path: '/online-banking-payment',
+      name: 'online-banking-payment',
+      builder: (context, state) => DemoPaymentSelectionScreen(
+        method: PaymentMethod.onlineBanking,
+        checkout: PaymentCheckoutData.fromExtra(state.extra),
+      ),
     ),
     GoRoute(
       path: '/payment-result',
       name: 'payment-result',
-      builder: (context, state) => const PaymentResultScreen(),
+      builder: (context, state) {
+        final args = state.extra is Map ? state.extra as Map : const {};
+        final orderId = args['orderId'];
+        final amountMinor = args['amountMinor'];
+        final currencyCode = args['currencyCode'];
+        final isDemo = args['isDemo'];
+        final order = args['order'];
+        final paymentMethod = args['paymentMethod'];
+        final paymentStatus = args['paymentStatus'];
+        return PaymentResultScreen(
+          orderId: orderId is String ? orderId : null,
+          amountMinor: amountMinor is int ? amountMinor : null,
+          currencyCode: currencyCode is String ? currencyCode : 'LKR',
+          isDemo: isDemo is bool ? isDemo : true,
+          order: order is OrderModel ? order : null,
+          paymentMethod: paymentMethod is String ? paymentMethod : 'card',
+          paymentStatus: paymentStatus is String ? paymentStatus : null,
+        );
+      },
     ),
-
+    GoRoute(
+      path: '/payment-failure',
+      name: 'payment-failure',
+      builder: (context, state) {
+        final args = state.extra is Map ? state.extra as Map : const {};
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
+        final paymentMethod = args['paymentMethod'];
+        return PaymentFailureScreen(
+          paymentMethod: paymentMethod is String ? paymentMethod : 'card',
+          amountMinor: checkout.totalMinor,
+          currencyCode: checkout.currency,
+          orderId: checkout.id,
+          orderDraft: checkout.orderDraft,
+        );
+      },
+    ),
     GoRoute(
       path: '/product-details',
       name: 'product-details',
-      builder: (context, state) => const ProductDetailsScreen(),
+      builder: (context, state) => ProductDetailsScreen(
+        productId: state.uri.queryParameters['id'] ?? '',
+      ),
     ),
-
-    GoRoute(
-      path: '/edit-profile',
-      name: 'edit-profile',
-      builder: (context, state) => const EditProfileScreen(),
-    ),
-
     GoRoute(
       path: '/settings',
       name: 'settings',
@@ -203,7 +403,7 @@ class _CustomerNavigationShell extends StatelessWidget {
   static const _paths = [
     '/customer-home',
     '/categories',
-    '/search',
+    '/cart',
     '/favourites',
     '/profile',
   ];
@@ -222,7 +422,7 @@ class _CustomerNavigationShell extends StatelessWidget {
             icon: Icon(Icons.category_outlined),
             label: 'Categories',
           ),
-          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+          NavigationDestination(icon: CartBadge(), label: 'Cart'),
           NavigationDestination(
             icon: Icon(Icons.favorite_outline),
             label: 'Favourites',

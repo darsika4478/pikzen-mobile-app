@@ -1,7 +1,186 @@
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
-/// Shared authentication state scaffold for future ChangeNotifierProvider use.
-///
-/// Session state and authentication actions will be implemented with the
-/// authentication service. This placeholder performs no authentication.
-class AuthProvider extends ChangeNotifier {}
+import '../../../core/services/auth_service.dart';
+import '../../../models/user_model.dart';
+
+class AuthProvider extends ChangeNotifier {
+  AuthProvider({AuthService? service, bool restore = true})
+    : _service = service ?? AuthService() {
+    if (restore && Firebase.apps.isNotEmpty) unawaited(_restore());
+  }
+  final AuthService _service;
+  StreamSubscription<Object?>? _session;
+  bool _disposed = false;
+  bool busy = false;
+  bool rememberMe = false;
+  String? error;
+  UserModel? user;
+  String? get firstName {
+    final name = user?.name.trim() ?? '';
+    return name.isEmpty ? null : name.split(RegExp(r'\s+')).first;
+  }
+
+  // One common login, with a protected Admin/User Management destination.
+  static const String adminRoute = 'admin-users';
+  String? get destination => switch (user?.role) {
+    'customer' => 'customer-home',
+    'shop' => switch (user!.approvalStatus) {
+      null || 'pending' => 'shop-pending',
+      'approved' => 'shop-dashboard',
+      'rejected' => 'shop-rejected',
+      _ => null,
+    },
+    'admin' => adminRoute,
+    _ => null,
+  };
+  String? get shopAccessMessage {
+    if (user?.role != 'shop' || user!.isApprovedShop) return null;
+    return switch (user!.approvalStatus) {
+      null || 'pending' => 'Your shop account is awaiting admin approval.',
+      'rejected' => 'Your shop account was not approved.',
+      _ => 'Your shop approval status is invalid. Please contact support.',
+    };
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> _restore() async {
+    try {
+      rememberMe = await _service.remembered();
+      final uid = _service.auth.currentUser?.uid;
+      if (uid != null) {
+        final profile = await _service.profile();
+        if (!busy && _service.auth.currentUser?.uid == uid) user = profile;
+      }
+      if (_disposed) return;
+      _session = _service.auth.authStateChanges().listen((session) {
+        if (session == null) {
+          user = null;
+          _notify();
+        }
+      });
+    } catch (_) {
+      /* Keep login available if restoring the profile fails. */
+    }
+    _notify();
+  }
+
+  void setRemember(bool value) {
+    rememberMe = value;
+    _notify();
+  }
+
+  Future<bool> _run(Future<UserModel> Function() action) async {
+    if (busy) return false;
+    busy = true;
+    error = null;
+    _notify();
+    try {
+      user = await action();
+      if (destination == null) {
+        throw AuthFailure(
+          shopAccessMessage ??
+              'This account cannot open a workspace. Please contact support.',
+        );
+      }
+      return true;
+    } catch (e) {
+      user = null;
+      error = AuthService.message(e);
+      try {
+        await _service.signOut();
+      } catch (_) {}
+      return false;
+    } finally {
+      busy = false;
+      _notify();
+    }
+  }
+
+  Future<bool> signIn(String email, String password) =>
+      _run(() => _service.signIn(email, password, rememberMe));
+  Future<bool> google() => _run(() => _service.google(rememberMe));
+  Future<bool> register(
+    String name,
+    String email,
+    String phone,
+    String password, {
+    String role = 'customer',
+  }) => _run(
+    () => _service.register(
+      name: name,
+      email: email,
+      phone: phone,
+      password: password,
+      role: role,
+    ),
+  );
+  Future<bool> reset(String email) async {
+    if (busy) return false;
+    busy = true;
+    error = null;
+    _notify();
+    try {
+      await _service.resetPassword(email);
+      return true;
+    } catch (e) {
+      error = AuthService.message(e);
+      return false;
+    } finally {
+      busy = false;
+      _notify();
+    }
+  }
+
+  Future<void> signOut() async {
+    await _service.signOut();
+    user = null;
+    _notify();
+  }
+
+  /// Reload the signed-in profile after a safe customer edit.
+  Future<void> refreshProfile() async {
+    final currentId = user?.id;
+    if (currentId == null) return;
+    final refreshed = await _service.profile();
+    if (user?.id == currentId && refreshed.id == currentId) {
+      user = refreshed;
+      _notify();
+    }
+  }
+
+  /// Apply an observed approval decision for the current shop account only.
+  void syncShopApprovalStatus(String uid, String? status) {
+    final current = user;
+    if (current == null ||
+        current.id != uid ||
+        current.role != 'shop' ||
+        !{null, 'pending', 'approved', 'rejected'}.contains(status) ||
+        current.approvalStatus == status) {
+      return;
+    }
+    user = UserModel(
+      id: current.id,
+      name: current.name,
+      email: current.email,
+      phoneNumber: current.phoneNumber,
+      role: current.role,
+      approvalStatus: status,
+      createdAt: current.createdAt,
+      accountStatus: current.accountStatus,
+    );
+    _notify();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _session?.cancel();
+    super.dispose();
+  }
+}

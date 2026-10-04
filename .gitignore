@@ -46,3 +46,15 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local Node admin tooling and credentials
+node_modules/
+.env
+.env.*
+.credentials/
+service-account.local.json
+*service-account*.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+*.pem
+*.key
