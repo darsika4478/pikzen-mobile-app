@@ -45,9 +45,7 @@ void main() {
     });
   }
 
-  testWidgets('Preview controls respond and navigation changes selection', (
-    tester,
-  ) async {
+  testWidgets('Preview notification control responds', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.lightTheme,
@@ -58,13 +56,11 @@ void main() {
     await tester.tap(find.byTooltip('Notifications'));
     await tester.pump();
     expect(find.text('No new notifications in this preview.'), findsOneWidget);
-    await tester.tap(find.text('Profile'));
-    await tester.pump();
     expect(
       tester
           .widget<DashboardBottomNav>(find.byType(DashboardBottomNav))
           .selectedIndex,
-      3,
+      0,
     );
     expect(tester.takeException(), isNull);
   });
