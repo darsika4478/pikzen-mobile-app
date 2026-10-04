@@ -86,7 +86,10 @@ class OrderDetailsScreen extends StatelessWidget {
       ),
     ),
     bottomNavigationBar: OrderActionBottomBar(
-      onAccept: () => _message(context, 'Order accepted'),
+      onAccept: () => context.pushNamed(
+        'confirm-availability',
+        pathParameters: {'orderId': order.orderId.substring(1)},
+      ),
       onReject: () => _message(context, 'Order rejected'),
     ),
   );

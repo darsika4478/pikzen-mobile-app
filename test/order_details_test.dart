@@ -63,7 +63,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    for (final label in ['Call customer', 'Accept Order', 'Reject Order']) {
+    for (final label in ['Call customer', 'Reject Order']) {
       await tester.tap(
         label == 'Call customer' ? find.byTooltip(label) : find.text(label),
       );
