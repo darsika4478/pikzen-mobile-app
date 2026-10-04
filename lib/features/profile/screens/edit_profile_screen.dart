@@ -12,7 +12,6 @@ import '../../../core/services/order_service.dart';
 import '../../../core/utils/validators.dart';
 import '../../../models/order_model.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../widgets/merchant_edit_profile_view.dart';
 
 typedef EditProfileIdentity = ({
   String uid,
@@ -30,16 +29,7 @@ class EditProfileScreen extends StatefulWidget {
     this.profileWriter,
     this.ordersForCustomer,
     this.identityForTesting,
-  }) : isShopPartner = false;
-
-  const EditProfileScreen.shopPartner({super.key})
-    : isShopPartner = true,
-      profileLoader = null,
-      profileWriter = null,
-      ordersForCustomer = null,
-      identityForTesting = null;
-
-  final bool isShopPartner;
+  });
 
   /// Test seams; the application route constructs this screen without overrides.
   final Future<Map<String, dynamic>?> Function(String uid)? profileLoader;
@@ -130,10 +120,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         (Firebase.apps.isEmpty
             ? Future<Map<String, dynamic>?>.value(null)
             : FirestoreService().database
-                  .collection('users')
-                  .doc(uid)
-                  .get()
-                  .then((document) => document.data()));
+                .collection('users')
+                .doc(uid)
+                .get()
+                .then((document) => document.data()));
     load
         .then((data) {
           if (!mounted || _uid != uid) return;
@@ -312,9 +302,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.isShopPartner) {
-      return const MerchantEditProfileView();
-    }
     final identity = _identity(context);
     if (identity != null) _startLoading(identity.uid);
     return PopScope<Object?>(
