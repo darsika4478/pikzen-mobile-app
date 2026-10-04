@@ -6,6 +6,9 @@ import 'package:pikzen/core/theme/app_theme.dart';
 import 'package:pikzen/features/shop_management/screens/incoming_orders_screen.dart';
 import 'package:pikzen/features/shop_management/screens/shop_dashboard_screen.dart';
 import 'package:pikzen/features/shop_management/widgets/incoming_order_card.dart';
+import 'package:pikzen/features/shop_management/widgets/dashboard_bottom_nav.dart';
+import 'package:pikzen/features/shop_management/screens/product_management_screen.dart';
+import 'package:pikzen/features/profile/widgets/merchant_profile_view.dart';
 
 void main() {
   for (final width in [360.0, 375.0, 390.0, 412.0, 430.0]) {
@@ -23,10 +26,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('#P2001'), findsOneWidget);
       expect(find.text('Rs 21.60'), findsOneWidget);
+      expect(
+        tester
+            .widget<DashboardBottomNav>(find.byType(DashboardBottomNav))
+            .selectedIndex,
+        1,
+      );
+      expect(tester.getRect(find.byType(DashboardBottomNav)).bottom, 700);
       expect(tester.takeException(), isNull);
       await tester.scrollUntilVisible(find.text('Ali Khan'), 180);
       await tester.pumpAndSettle();
       expect(find.text('Rs 18.50'), findsOneWidget);
+      expect(tester.getRect(find.byType(DashboardBottomNav)).bottom, 700);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(
         MaterialApp(
@@ -82,5 +93,41 @@ void main() {
       expect(find.byType(ShopDashboardScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
+  });
+
+  testWidgets('Orders keeps navigation visible and all tabs work', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const PikZenApp());
+    appRouter.goNamed('shop-dashboard');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scheduled'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Orders'));
+    await tester.pumpAndSettle();
+    expect(find.text('No scheduled orders'), findsOneWidget);
+    for (final (label, type) in [
+      ('Products', ProductsScreen),
+      ('Profile', MerchantProfileView),
+    ]) {
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      expect(find.byType(type), findsOneWidget);
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byType(IncomingOrdersScreen), findsOneWidget);
+      expect(
+        tester
+            .widget<DashboardBottomNav>(find.byType(DashboardBottomNav))
+            .selectedIndex,
+        1,
+      );
+    }
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ShopDashboardScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

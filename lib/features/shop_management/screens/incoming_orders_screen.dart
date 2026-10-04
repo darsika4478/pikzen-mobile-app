@@ -6,6 +6,7 @@ import '../models/mock_incoming_order.dart';
 import '../widgets/incoming_order_card.dart';
 import '../widgets/incoming_orders_header.dart';
 import '../widgets/order_type_tabs.dart';
+import '../widgets/dashboard_bottom_nav.dart';
 
 /// UI-only orders preview; no actions change or process orders.
 class IncomingOrdersScreen extends StatefulWidget {
@@ -36,6 +37,7 @@ class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
+        bottom: false,
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
@@ -92,6 +94,21 @@ class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
             ),
           ),
         ),
+      ),
+      bottomNavigationBar: DashboardBottomNav(
+        selectedIndex: 1,
+        onSelected: (index) {
+          switch (index) {
+            case 0:
+              context.goNamed('shop-dashboard');
+            case 1:
+              break;
+            case 2:
+              context.pushNamed('product-management');
+            case 3:
+              context.pushNamed('shop-profile');
+          }
+        },
       ),
     );
   }

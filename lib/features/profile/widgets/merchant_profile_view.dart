@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../shop_management/widgets/dashboard_bottom_nav.dart';
+import 'logout_confirmation_dialog.dart';
 
 /// Presentation for ProfileScreen's local shop partner mode.
 class MerchantProfileView extends StatelessWidget {
@@ -17,21 +18,8 @@ class MerchantProfileView extends StatelessWidget {
   Future<void> _logout(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Logout?'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.rejectRed),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      builder: (dialogContext) => const LogoutConfirmationDialog(),
     );
     if (confirmed == true && context.mounted) {
       _message(context, 'Logout selected');
