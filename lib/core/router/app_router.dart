@@ -40,12 +40,9 @@ import '../../features/shop_management/screens/incoming_orders_screen.dart';
 import '../../features/shop_management/screens/order_details_screen.dart';
 import '../../features/shop_management/screens/confirm_availability_screen.dart';
 import '../../features/shop_management/screens/update_order_status_screen.dart';
-import '../../features/shop_management/screens/contact_customer_screen.dart';
 import '../../features/shop_management/models/mock_incoming_order.dart';
 import '../../features/shop_management/models/mock_order_details.dart';
-import '../../features/shop_management/models/mock_shop_product.dart';
 import '../../features/shop_management/screens/inventory_screen.dart';
-import '../../features/shop_management/screens/inventory_stock_screen.dart';
 import '../../features/shop_management/screens/prepare_order_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
 import '../../features/shop_management/screens/shop_dashboard_screen.dart';
@@ -351,15 +348,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/add-edit-product',
       name: 'add-edit-product',
-      builder: (context, state) {
-        final selected = state.uri.queryParameters['product'];
-        for (final product in mockShopProducts) {
-          if (product.visualType.name == selected) {
-            return AddEditProductScreen(product: product);
-          }
-        }
-        return const AddEditProductScreen();
-      },
+      builder: (context, state) => const AddEditProductScreen(),
     ),
     GoRoute(
       path: '/incoming-orders',
@@ -414,37 +403,6 @@ final GoRouter appRouter = GoRouter(
           body: SafeArea(child: Center(child: Text('Order not found'))),
         );
       },
-    ),
-    GoRoute(
-      path: '/contact-customer/:orderId',
-      name: 'contact-customer',
-      builder: (context, state) {
-        for (final order in mockIncomingOrders) {
-          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
-            return ContactCustomerScreen(
-              order: MockOrderDetails.fromIncoming(order),
-            );
-          }
-        }
-        return const Scaffold(
-          body: SafeArea(child: Center(child: Text('Order not found'))),
-        );
-      },
-    ),
-    GoRoute(
-      path: '/shop-edit-profile',
-      name: 'shop-edit-profile',
-      builder: (context, state) => const EditProfileScreen.shopPartner(),
-    ),
-    GoRoute(
-      path: '/shop-profile',
-      name: 'shop-profile',
-      builder: (context, state) => const ProfileScreen.shopPartner(),
-    ),
-    GoRoute(
-      path: '/inventory-stock',
-      name: 'inventory-stock',
-      builder: (context, state) => const InventoryStockScreen(),
     ),
     GoRoute(
       path: '/inventory',

@@ -17,14 +17,10 @@ class ProductsScreen extends StatefulWidget {
 
 class _ProductsScreenState extends State<ProductsScreen> {
   String _search = '';
-  void _openForm([MockShopProduct? product]) {
-    FocusScope.of(context).unfocus();
-    context.pushNamed(
-      'add-edit-product',
-      queryParameters: {
-        if (product != null) 'product': product.visualType.name,
-      },
-    );
+  void _preview(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _back() {
@@ -53,23 +49,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
             constraints: const BoxConstraints(maxWidth: 480),
             child: Column(
               children: [
-                ProductsHeader(onBack: _back, onAdd: () => _openForm()),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: TextButton.icon(
-                      onPressed: () {
-                        FocusScope.of(context).unfocus();
-                        context.pushNamed('inventory-stock');
-                      },
-                      icon: const Icon(Icons.inventory_2_outlined, size: 16),
-                      label: const Text(
-                        'Inventory & Stock',
-                        style: TextStyle(fontSize: 11),
-                      ),
-                    ),
-                  ),
+                ProductsHeader(
+                  onBack: _back,
+                  onAdd: () => _preview('Add Product'),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -98,7 +80,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               const SizedBox(height: 10),
                           itemBuilder: (context, index) => ProductListCard(
                             product: products[index],
-                            onSelected: () => _openForm(products[index]),
+                            onSelected: () =>
+                                _preview('${products[index].name} selected'),
                           ),
                         ),
                 ),
@@ -119,7 +102,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             case 2:
               break;
             case 3:
-              context.pushNamed('shop-profile');
+              context.pushNamed('profile');
           }
         },
       ),

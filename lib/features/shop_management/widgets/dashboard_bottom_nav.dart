@@ -49,8 +49,6 @@ class DashboardBottomNav extends StatelessWidget {
                           Icon(
                             selected && index == 0
                                 ? Icons.home_rounded
-                                : selected && index == 3
-                                ? Icons.person_rounded
                                 : _icons[index],
                             size: 23,
                             color: color,

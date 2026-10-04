@@ -54,16 +54,6 @@ class OrderDetailsScreen extends StatelessWidget {
                             CustomerInfoSection(
                               order: order,
                               onCall: () => _message(context, 'Call customer'),
-                              onContact: () {
-                                ScaffoldMessenger.of(context)
-                                    .removeCurrentSnackBar();
-                                context.pushNamed(
-                                  'contact-customer',
-                                  pathParameters: {
-                                    'orderId': order.orderId.substring(1),
-                                  },
-                                );
-                              },
                             ),
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 18),
