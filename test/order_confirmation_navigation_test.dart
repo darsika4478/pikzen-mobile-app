@@ -59,6 +59,11 @@ void main() {
         builder: (_, _) => const Scaffold(body: Text('My Orders')),
       ),
       GoRoute(
+        path: '/order-details',
+        name: 'order-details',
+        builder: (_, state) => Scaffold(body: Text('Order ${state.extra}')),
+      ),
+      GoRoute(
         path: '/customer-home',
         name: 'customer-home',
         builder: (_, _) => const Scaffold(body: Text('Customer Home')),
@@ -71,7 +76,7 @@ void main() {
     ],
   );
 
-  testWidgets('View Order goes to My Orders with no payment back stack', (
+  testWidgets('View Order opens the saved order with no payment back stack', (
     tester,
   ) async {
     final appRouter = router();
@@ -84,7 +89,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('View Order'));
     await tester.pumpAndSettle();
-    expect(find.text('My Orders'), findsOneWidget);
+    expect(find.text('Order ${order.id}'), findsOneWidget);
     expect(appRouter.canPop(), isFalse);
   });
 

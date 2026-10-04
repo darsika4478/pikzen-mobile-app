@@ -316,7 +316,8 @@ class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
             SizedBox(
               height: 52,
               child: FilledButton.icon(
-                onPressed: () => context.goNamed('my-orders'),
+                onPressed: () =>
+                    context.goNamed('order-details', extra: order.id),
                 icon: const Icon(Icons.receipt_long_outlined),
                 label: const Text('View Order'),
                 style: FilledButton.styleFrom(

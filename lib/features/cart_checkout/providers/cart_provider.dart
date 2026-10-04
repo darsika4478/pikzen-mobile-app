@@ -24,6 +24,7 @@ class CartProvider extends ChangeNotifier {
         _items[id] = CartItemModel(
           product: product,
           quantity: item.quantity.clamp(0, product.stockQuantity),
+          unit: item.unit,
         );
         changed = true;
       }
@@ -71,6 +72,7 @@ class CartProvider extends ChangeNotifier {
       _items[id] = CartItemModel(
         product: item.product,
         quantity: item.quantity - 1,
+        unit: item.unit,
       );
     }
     notifyListeners();

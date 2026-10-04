@@ -94,16 +94,6 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) => const CartScreen(),
         ),
         GoRoute(
-          path: '/checkout',
-          name: 'checkout',
-          builder: (context, state) => const CheckoutScreen(),
-        ),
-        GoRoute(
-          path: '/pickup-date',
-          name: 'pickup-date',
-          builder: (context, state) => const PickupDateScreen(),
-        ),
-        GoRoute(
           path: '/favourites',
           name: 'favourites',
           builder: (context, state) => const FavouritesScreen(),
@@ -175,6 +165,16 @@ final GoRouter appRouter = GoRouter(
       name: 'shop-rejected',
       builder: (context, state) =>
           const ShopApprovalStatusScreen(rejected: true),
+    ),
+    GoRoute(
+      path: '/checkout',
+      name: 'checkout',
+      builder: (context, state) => const CheckoutScreen(),
+    ),
+    GoRoute(
+      path: '/pickup-date',
+      name: 'pickup-date',
+      builder: (context, state) => const PickupDateScreen(),
     ),
     GoRoute(
       path: '/order-confirmation',

@@ -1,9 +1,11 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/order_service.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../models/order_model.dart';
 import '../../../models/payment_model.dart';
@@ -99,37 +101,49 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
       return;
     }
     setState(() => _submitting = true);
+    late final OrderModel order;
     try {
-      final order = await (widget.demoPayments ?? DemoPaymentService()).confirm(
+      final saved = await (widget.demoPayments ?? DemoPaymentService()).confirm(
         _checkout,
         PaymentMethod.card,
       );
-      if (order == null) throw StateError('Order was not saved');
-      if (!mounted) return;
-      try {
-        context.read<CartProvider>().removePurchased(order.items);
-        context.read<CheckoutProvider>().recordPaymentAttempt('demo');
-      } on ProviderNotFoundException {
-        // Standalone widget tests may omit app providers.
+      if (saved == null) {
+        throw const OrderActionException('Order was not saved.');
       }
-      _completed = true;
-      context.goNamed(
-        'payment-result',
-        extra: _checkout.successExtra(PaymentMethod.card, order),
-      );
-    } catch (_) {
+      order = saved;
+    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Payment or order saving failed. Your cart was kept. Please retry.',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_paymentErrorMessage(error))));
+        setState(() => _submitting = false);
       }
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+      return;
     }
+    if (!mounted) return;
+    try {
+      context.read<CartProvider>().removePurchased(order.items);
+      context.read<CheckoutProvider>().recordPaymentAttempt('demo');
+    } on ProviderNotFoundException {
+      // Standalone widget tests may omit app providers.
+    }
+    _completed = true;
+    context.goNamed(
+      'payment-result',
+      extra: _checkout.successExtra(PaymentMethod.card, order),
+    );
+  }
+
+  static String _paymentErrorMessage(Object error) {
+    if (error is OrderActionException) return error.message;
+    if (error is FirebaseException) {
+      if (error.code == 'permission-denied') {
+        return 'Order saving was denied. Check your account and Firestore rules.';
+      }
+      if (error.code == 'unavailable') {
+        return 'Cannot reach the order service. Check your connection and retry.';
+      }
+    }
+    return 'Order saving failed. Your cart was kept. Please retry.';
   }
 
   @override
@@ -357,22 +371,8 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   static String? _validateCardNumber(String? value) {
     final digits = (value ?? '').replaceAll(RegExp(r'\s'), '');
     if (!RegExp(r'^\d{16}$').hasMatch(digits)) {
-      return 'Enter a valid card number';
+      return 'Enter 16 digits';
     }
-    var sum = 0;
-    for (
-      var index = digits.length - 1, position = 0;
-      index >= 0;
-      index--, position++
-    ) {
-      var digit = int.parse(digits[index]);
-      if (position.isOdd) {
-        digit *= 2;
-        if (digit > 9) digit -= 9;
-      }
-      sum += digit;
-    }
-    if (sum % 10 != 0) return 'Check the card number';
     return null;
   }
 
@@ -383,15 +383,9 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   }
 
   static String? _validateExpiry(String? value) {
-    final match = RegExp(r'^(0[1-9]|1[0-2])/(\d{2})$').firstMatch(value ?? '');
-    if (match == null) return 'Use MM/YY';
-    final now = DateTime.now();
-    final year = 2000 + int.parse(match.group(2)!);
-    final month = int.parse(match.group(1)!);
-    if (year < now.year || (year == now.year && month < now.month)) {
-      return 'Card has expired';
-    }
-    return null;
+    return RegExp(r'^(0[1-9]|1[0-2])/\d{2}$').hasMatch(value ?? '')
+        ? null
+        : 'Use MM/YY';
   }
 
   static String? _validateCvv(String? value) {

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../models/payment_model.dart';
 import '../../../shared/widgets/primary_button.dart';
+import '../../cart_checkout/providers/cart_provider.dart';
 import '../widgets/payment_summary_card.dart';
 
 /// Dedicated wallet and bank routes share sample selection UI.
@@ -68,6 +70,12 @@ class _DemoPaymentSelectionScreenState
     try {
       final order = await _payments.confirm(widget.checkout, widget.method);
       if (!mounted) return;
+      if (order == null) throw StateError('Order was not saved');
+      try {
+        context.read<CartProvider>().removePurchased(order.items);
+      } on ProviderNotFoundException {
+        // Isolated widget tests may not provide the shared cart.
+      }
       context.goNamed(
         'payment-result',
         extra: widget.checkout.successExtra(widget.method, order),

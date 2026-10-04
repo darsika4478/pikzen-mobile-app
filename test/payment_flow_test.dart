@@ -10,9 +10,11 @@ import 'package:pikzen/core/services/payment_service.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
 import 'package:pikzen/features/payments_tracking/screens/card_payment_screen.dart';
 import 'package:pikzen/features/payments_tracking/screens/order_tracking_screen.dart';
+import 'package:pikzen/features/payments_tracking/screens/payment_selection_screen.dart';
 import 'package:pikzen/features/payments_tracking/screens/payment_result_screen.dart';
 import 'package:pikzen/models/cart_item_model.dart';
 import 'package:pikzen/models/order_model.dart';
+import 'package:pikzen/models/payment_model.dart';
 import 'package:pikzen/models/product_model.dart';
 
 const product = ProductModel(
@@ -62,14 +64,27 @@ class RecordingOrders extends OrderService {
   }
 }
 
-GoRouter router(OrderModel order, RecordingOrders orders) => GoRouter(
-  initialLocation: '/card-payment',
+GoRouter router(
+  OrderModel order,
+  RecordingOrders orders, {
+  String initialLocation = '/card-payment',
+}) => GoRouter(
+  initialLocation: initialLocation,
   routes: [
     GoRoute(
       path: '/card-payment',
       name: 'card-payment',
       builder: (_, _) => CardPaymentScreen(
         orderDraft: order,
+        demoPayments: DemoPaymentService(orders: orders),
+      ),
+    ),
+    GoRoute(
+      path: '/ewallet-payment',
+      name: 'ewallet-payment',
+      builder: (_, _) => DemoPaymentSelectionScreen(
+        method: PaymentMethod.ewallet,
+        checkout: PaymentCheckoutData(orderDraft: order),
         demoPayments: DemoPaymentService(orders: orders),
       ),
     ),
@@ -167,6 +182,64 @@ void main() {
     await tester.pumpAndSettle();
     expect(cart.count, 1);
     expect(find.byType(CardPaymentScreen), findsOneWidget);
+    expect(find.byType(PaymentResultScreen), findsNothing);
+  });
+
+  testWidgets('wallet order clears cart only after successful save', (
+    tester,
+  ) async {
+    final orders = RecordingOrders(gate: Completer<void>());
+    final cart = CartProvider()..add(product);
+    final appRouter = router(
+      draft(),
+      orders,
+      initialLocation: '/ewallet-payment',
+    );
+    addTearDown(appRouter.dispose);
+    addTearDown(cart.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: cart,
+        child: MaterialApp.router(routerConfig: appRouter),
+      ),
+    );
+    await tester.tap(find.text('FriMi'));
+    await tester.pump();
+    await tester.tap(find.text('Pay with e-Wallet'));
+    await tester.pump();
+    expect(orders.calls, 1);
+    expect(cart.count, 1);
+    orders.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(cart.count, 0);
+    expect(find.text('Payment Successful!'), findsOneWidget);
+    expect(orders.saved['order-123']!.paymentMethod, 'ewallet');
+  });
+
+  testWidgets('wallet save failure keeps purchased items in cart', (
+    tester,
+  ) async {
+    final orders = RecordingOrders(fail: true);
+    final cart = CartProvider()..add(product);
+    final appRouter = router(
+      draft(),
+      orders,
+      initialLocation: '/ewallet-payment',
+    );
+    addTearDown(appRouter.dispose);
+    addTearDown(cart.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: cart,
+        child: MaterialApp.router(routerConfig: appRouter),
+      ),
+    );
+    await tester.tap(find.text('FriMi'));
+    await tester.pump();
+    await tester.tap(find.text('Pay with e-Wallet'));
+    await tester.pumpAndSettle();
+    expect(cart.count, 1);
+    expect(find.byType(DemoPaymentSelectionScreen), findsOneWidget);
     expect(find.byType(PaymentResultScreen), findsNothing);
   });
 

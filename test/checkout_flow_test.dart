@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pikzen/core/router/app_router.dart';
 import 'package:pikzen/core/theme/app_theme.dart';
+import 'package:pikzen/features/auth/providers/auth_provider.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
 import 'package:pikzen/features/cart_checkout/providers/checkout_provider.dart';
 import 'package:pikzen/features/cart_checkout/screens/checkout_screen.dart';
@@ -19,8 +20,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final cart = CartProvider();
       final checkout = CheckoutProvider();
+      final auth = AuthProvider(restore: false);
       addTearDown(cart.dispose);
       addTearDown(checkout.dispose);
+      addTearDown(auth.dispose);
       expect(
         cart.add(
           const ProductModel(
@@ -36,6 +39,7 @@ void main() {
       await tester.pumpWidget(
         MultiProvider(
           providers: [
+            ChangeNotifierProvider.value(value: auth),
             ChangeNotifierProvider.value(value: cart),
             ChangeNotifierProvider.value(value: checkout),
           ],

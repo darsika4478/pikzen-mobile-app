@@ -1,24 +1,37 @@
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
 import '../../../core/services/order_service.dart';
 import '../../../models/cart_item_model.dart';
 import '../../../models/payment_model.dart';
-import '../../../models/order_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/checkout_provider.dart';
 import '../widgets/checkout_ui.dart';
 
-class ReviewOrderScreen extends StatelessWidget {
+class ReviewOrderScreen extends StatefulWidget {
   const ReviewOrderScreen({super.key});
 
-  void _confirm(BuildContext context) {
+  @override
+  State<ReviewOrderScreen> createState() => _ReviewOrderScreenState();
+}
+
+class _ReviewOrderScreenState extends State<ReviewOrderScreen> {
+  bool _checking = false;
+
+  Future<void> _confirm() async {
+    if (_checking) return;
     final cart = context.read<CartProvider>();
     final checkout = context.read<CheckoutProvider>();
-    final uid = context.read<AuthProvider>().user?.id;
+    final connected = Firebase.apps.isNotEmpty;
+    final uid = connected
+        ? FirebaseAuth.instance.currentUser?.uid
+        : context.read<AuthProvider>().user?.id;
     String? error;
     if (cart.items.isEmpty) {
       error = 'Add items to your cart before continuing.';
@@ -35,19 +48,53 @@ class ReviewOrderScreen extends StatelessWidget {
     if (error != null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error)));
+      if (uid == null && connected) context.goNamed('login');
       return;
     }
-    OrderModel draft;
+    setState(() => _checking = true);
     try {
+      if (connected) {
+        final before = {
+          for (final item in cart.items)
+            item.product.id: (
+              item.quantity,
+              item.product.priceMinor,
+              item.product.stockQuantity,
+              item.product.shopId,
+            ),
+        };
+        final latest = await FirestoreService().currentProducts();
+        if (!mounted) return;
+        cart.syncProducts(latest);
+        if (cart.items.length != before.length ||
+            cart.items.any(
+              (item) =>
+                  before[item.product.id] !=
+                  (
+                    item.quantity,
+                    item.product.priceMinor,
+                    item.product.stockQuantity,
+                    item.product.shopId,
+                  ),
+            )) {
+          throw const OrderActionException(
+            'Product stock or prices changed. Review your cart before placing the order.',
+          );
+        }
+      }
       final items = cart.items;
       final shopId = items.first.product.shopId;
-      if (shopId.isNotEmpty &&
-          items.any((item) => item.product.shopId != shopId)) {
+      if (items.any((item) => item.product.shopId != shopId)) {
         throw const OrderActionException(
           'Place items from one store at a time.',
         );
       }
-      draft = OrderService().newDraft(
+      if (connected && shopId.isEmpty) {
+        throw const OrderActionException(
+          'A pickup shop is unavailable for this item.',
+        );
+      }
+      final draft = OrderService().newDraft(
         customerId: uid!,
         items: items,
         pickupAt: checkout.pickupTime,
@@ -57,33 +104,37 @@ class ReviewOrderScreen extends StatelessWidget {
             ? null
             : items.first.product.shopName,
       );
+      checkout.markReviewed();
+      final data = PaymentCheckoutData(orderDraft: draft);
+      switch (checkout.paymentMethod) {
+        case PaymentMethod.card:
+          context.pushNamed(
+            'card-payment',
+            extra: data.toExtra(PaymentMethod.card),
+          );
+        case PaymentMethod.cashOnPickup:
+        case PaymentMethod.ewallet:
+        case PaymentMethod.onlineBanking:
+          context.pushNamed(
+            checkout.paymentMethod.routeName,
+            extra: data.toExtra(checkout.paymentMethod),
+          );
+      }
     } on OrderActionException catch (error) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
-      return;
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
     } catch (_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to prepare the order. Please try again.'),
-        ),
-      );
-      return;
-    }
-    checkout.markReviewed();
-    final data = PaymentCheckoutData(orderDraft: draft);
-    switch (checkout.paymentMethod) {
-      case PaymentMethod.card:
-        context.pushNamed(
-          'card-payment',
-          extra: data.toExtra(PaymentMethod.card),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to refresh products. Please try again.'),
+          ),
         );
-      case PaymentMethod.cashOnPickup:
-      case PaymentMethod.ewallet:
-      case PaymentMethod.onlineBanking:
-        context.pushNamed(
-          checkout.paymentMethod.routeName,
-          extra: data.toExtra(checkout.paymentMethod),
-        );
+      }
+    } finally {
+      if (mounted) setState(() => _checking = false);
     }
   }
 
@@ -154,6 +205,21 @@ class ReviewOrderScreen extends StatelessWidget {
                                 time == null
                                     ? 'Select pickup time'
                                     : '${pickupTimeLabel(time)} - ${pickupTimeLabel(time.add(const Duration(minutes: 30)))}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.secondaryText,
+                                ),
+                              ),
+                              Text(
+                                cart.items.isEmpty ||
+                                        cart
+                                            .items
+                                            .first
+                                            .product
+                                            .shopName
+                                            .isEmpty
+                                    ? 'Pickup shop unavailable'
+                                    : cart.items.first.product.shopName,
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: AppColors.secondaryText,
@@ -231,7 +297,7 @@ class ReviewOrderScreen extends StatelessWidget {
                           Icons.shopping_bag_outlined,
                           'Item Breakdown (${cart.count} items)',
                           'View All',
-                          () => context.pushNamed('cart'),
+                          () => context.goNamed('cart'),
                         ),
                         const SizedBox(height: 8),
                         if (cart.items.isEmpty)
@@ -328,9 +394,11 @@ class ReviewOrderScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  onPressed: () => _confirm(context),
+                  onPressed: _checking ? null : _confirm,
                   icon: const Icon(Icons.check_circle_outline, size: 18),
-                  label: const Text('Confirm & Place Order'),
+                  label: Text(
+                    _checking ? 'Checking order...' : 'Confirm & Place Order',
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF075F1A),
                     shape: RoundedRectangleBorder(
