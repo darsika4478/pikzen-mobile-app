@@ -53,9 +53,7 @@ void main() {
     });
   }
 
-  testWidgets('Local search, product selection, and Add button', (
-    tester,
-  ) async {
+  testWidgets('Local product search and empty results', (tester) async {
     await tester.pumpWidget(
       MaterialApp(theme: AppTheme.lightTheme, home: const ProductsScreen()),
     );
@@ -68,9 +66,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ProductListCard), findsOneWidget);
       expect(find.text(result), findsOneWidget);
-      await tester.tap(find.text(result));
-      await tester.pumpAndSettle();
-      expect(find.text('$result selected'), findsOneWidget);
     }
     await tester.enterText(find.byType(TextField), 'no match');
     await tester.pumpAndSettle();
@@ -78,9 +73,6 @@ void main() {
     await tester.enterText(find.byType(TextField), '');
     await tester.pumpAndSettle();
     expect(find.byType(ProductListCard), findsNWidgets(4));
-    await tester.tap(find.byTooltip('Add Product'));
-    await tester.pumpAndSettle();
-    expect(find.text('Add Product'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -89,6 +89,10 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
       bottomNavigationBar: DashboardBottomNav(
         selectedIndex: _selectedIndex,
         onSelected: (index) {
+          if (index == 3) {
+            context.pushNamed('shop-profile');
+            return;
+          }
           if (index == 2) {
             context.pushNamed('product-management');
             return;
