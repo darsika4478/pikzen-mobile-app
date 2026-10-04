@@ -76,7 +76,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: title);
       expect(appRouter.canPop(), isTrue, reason: title);
-      if (title == 'Shop Dashboard') {
+      if (title == 'Shop Dashboard' || title == 'Incoming Orders') {
         // The dashboard deliberately has its own header rather than an AppBar.
         appRouter.pop();
       } else {
