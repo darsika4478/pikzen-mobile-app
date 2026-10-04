@@ -88,7 +88,10 @@ Future<({GoRouter router, AuthProvider auth})> _mount(
   double textScale = 1,
   bool waitForReady = true,
 }) async {
-  final auth = AuthProvider(service: _ProfileAuthService(store), restore: false);
+  final auth = AuthProvider(
+    service: _ProfileAuthService(store),
+    restore: false,
+  );
   expect(await auth.signIn('test@example.com', 'password'), isTrue);
   final products = ProductProvider();
   final router = GoRouter(
@@ -117,22 +120,23 @@ Future<({GoRouter router, AuthProvider auth})> _mount(
   addTearDown(router.dispose);
   addTearDown(auth.dispose);
   addTearDown(products.dispose);
-  await tester.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<AuthProvider>.value(value: auth),
-      ChangeNotifierProvider<ProductProvider>.value(value: products),
-    ],
-    child: MaterialApp.router(
-      theme: AppTheme.lightTheme,
-      routerConfig: router,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(textScale),
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthProvider>.value(value: auth),
+        ChangeNotifierProvider<ProductProvider>.value(value: products),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.lightTheme,
+        routerConfig: router,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
         ),
-        child: child!,
       ),
     ),
-  ));
+  );
   if (waitForReady) {
     await tester.pumpAndSettle();
   } else {
@@ -152,41 +156,68 @@ Future<void> _tapSave(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('loads the signed-in customer and shows only verified Auth email',
-      (tester) async {
-    final store = _ProfileStore();
-    final loaded = Completer<Map<String, dynamic>?>();
-    String? requestedUid;
-    final mounting = _mount(tester, store, waitForReady: false, loader: (uid) {
-      requestedUid = uid;
-      return loaded.future;
-    });
-    // _mount waits for scheduled frames, not for the delayed profile load.
-    await mounting;
-    expect(requestedUid, 'test-user');
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Save Changes'), findsNothing);
-    loaded.complete(store.document);
-    await tester.pumpAndSettle();
-    expect(find.text('Nimal Silva'), findsWidgets);
-    expect(find.text('Member since 2023'), findsOneWidget);
-    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('fullName')))
-        .controller!.text, 'Nimal Silva');
-    final email = tester.widget<TextFormField>(find.byKey(const ValueKey('email')));
-    expect(email.initialValue, 'auth@example.com');
-    expect(tester.widget<TextField>(find.descendant(
-      of: find.byKey(const ValueKey('email')),
-      matching: find.byType(TextField),
-    )).readOnly, isTrue);
-    expect(find.text('Verified'), findsOneWidget);
-    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('phone')))
-        .controller!.text, '+94771234567');
-    expect(find.text('Phone Number'), findsOneWidget);
-    expect(find.text('Required'), findsOneWidget);
-  });
+  testWidgets(
+    'loads the signed-in customer and shows only verified Auth email',
+    (tester) async {
+      final store = _ProfileStore();
+      final loaded = Completer<Map<String, dynamic>?>();
+      String? requestedUid;
+      final mounting = _mount(
+        tester,
+        store,
+        waitForReady: false,
+        loader: (uid) {
+          requestedUid = uid;
+          return loaded.future;
+        },
+      );
+      // _mount waits for scheduled frames, not for the delayed profile load.
+      await mounting;
+      expect(requestedUid, 'test-user');
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Save Changes'), findsNothing);
+      loaded.complete(store.document);
+      await tester.pumpAndSettle();
+      expect(find.text('Nimal Silva'), findsWidgets);
+      expect(find.text('Member since 2023'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('fullName')))
+            .controller!
+            .text,
+        'Nimal Silva',
+      );
+      final email = tester.widget<TextFormField>(
+        find.byKey(const ValueKey('email')),
+      );
+      expect(email.initialValue, 'auth@example.com');
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const ValueKey('email')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .readOnly,
+        isTrue,
+      );
+      expect(find.text('Verified'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('phone')))
+            .controller!
+            .text,
+        '+94771234567',
+      );
+      expect(find.text('Phone Number'), findsOneWidget);
+      expect(find.text('Required'), findsOneWidget);
+    },
+  );
 
-  testWidgets('missing optional data uses initials and no false badges',
-      (tester) async {
+  testWidgets('missing optional data uses initials and no false badges', (
+    tester,
+  ) async {
     final store = _ProfileStore();
     store.document = {
       'uid': 'test-user',
@@ -194,59 +225,90 @@ void main() {
       'fullName': '',
       'phone': null,
     };
-    await _mount(tester, store, identity: (
-      uid: 'test-user',
-      email: 'auth@example.com',
-      displayName: 'Auth Name',
-      photoUrl: null,
-      emailVerified: false,
-    ));
+    await _mount(
+      tester,
+      store,
+      identity: (
+        uid: 'test-user',
+        email: 'auth@example.com',
+        displayName: 'Auth Name',
+        photoUrl: null,
+        emailVerified: false,
+      ),
+    );
     expect(find.text('Auth Name'), findsOneWidget);
     expect(find.text('AN'), findsOneWidget);
     expect(find.text('Verified'), findsNothing);
     expect(find.text('Member since 2023'), findsNothing);
     expect(find.text('Default Hub'), findsNothing);
     expect(find.text('SMS Alerts Enabled'), findsNothing);
-    expect(tester.widget<IconButton>(find.widgetWithIcon(
-      IconButton, Icons.camera_alt_outlined,
-    ))
-        .onPressed, isNull);
-    expect(tester.widget<IconButton>(find.widgetWithIcon(
-      IconButton, Icons.delete_outline,
-    ))
-        .onPressed, isNull);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.camera_alt_outlined),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.delete_outline),
+          )
+          .onPressed,
+      isNull,
+    );
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('uses a real recent order hub and disables unavailable Change',
-      (tester) async {
+  testWidgets('uses a real recent order hub and disables unavailable Change', (
+    tester,
+  ) async {
     final store = _ProfileStore();
-    await _mount(tester, store, orders: (_) => Stream.value([
-      OrderModel(
-        id: 'order-1',
-        userId: 'test-user',
-        items: const [],
-        createdAt: DateTime.utc(2026, 10, 1),
-        shopName: 'Colombo 03 Hub',
-      ),
-    ]));
+    await _mount(
+      tester,
+      store,
+      orders: (_) => Stream.value([
+        OrderModel(
+          id: 'order-1',
+          userId: 'test-user',
+          items: const [],
+          createdAt: DateTime.utc(2026, 10, 1),
+          shopName: 'Colombo 03 Hub',
+        ),
+      ]),
+    );
     expect(find.text('Colombo 03 Hub'), findsOneWidget);
-    expect(find.text('From a recent order • No saved default hub'),
-        findsOneWidget);
-    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Change'))
-        .onPressed, isNull);
+    expect(
+      find.text('From a recent order • No saved default hub'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, 'Change'))
+          .onPressed,
+      isNull,
+    );
   });
 
-  testWidgets('saves only changed safe fields and refreshes existing Profile',
-      (tester) async {
+  testWidgets('saves only changed safe fields and refreshes existing Profile', (
+    tester,
+  ) async {
     final store = _ProfileStore();
     final result = await _mount(tester, store);
-    await tester.enterText(find.byKey(const ValueKey('fullName')), '  Maya Perera  ');
+    await tester.enterText(
+      find.byKey(const ValueKey('fullName')),
+      '  Maya Perera  ',
+    );
     await tester.enterText(find.byKey(const ValueKey('phone')), '077 888 9999');
     await tester.ensureVisible(find.text('Order Ready for Pickup SMS'));
-    await tester.tap(find.widgetWithText(SwitchListTile, 'Order Ready for Pickup SMS'));
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Order Ready for Pickup SMS'),
+    );
     await tester.ensureVisible(find.text('Paperless Digital Invoices'));
-    await tester.tap(find.widgetWithText(SwitchListTile, 'Paperless Digital Invoices'));
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Paperless Digital Invoices'),
+    );
     await _tapSave(tester);
     expect(store.writes, hasLength(1));
     expect(store.writes.single, {
@@ -268,18 +330,27 @@ void main() {
     expect(find.text('+94778889999'), findsOneWidget);
     result.router.goNamed('edit-profile');
     await tester.pumpAndSettle();
-    expect(tester.widget<SwitchListTile>(find.widgetWithText(
-      SwitchListTile,
-      'Order Ready for Pickup SMS',
-    )).value, isFalse);
-    expect(tester.widget<SwitchListTile>(find.widgetWithText(
-      SwitchListTile,
-      'Paperless Digital Invoices',
-    )).value, isTrue);
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, 'Order Ready for Pickup SMS'),
+          )
+          .value,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, 'Paperless Digital Invoices'),
+          )
+          .value,
+      isTrue,
+    );
   });
 
-  testWidgets('rejects whitespace names and invalid Sri Lankan phone numbers',
-      (tester) async {
+  testWidgets('rejects whitespace names and invalid Sri Lankan phone numbers', (
+    tester,
+  ) async {
     final store = _ProfileStore();
     await _mount(tester, store);
     await tester.enterText(find.byKey(const ValueKey('fullName')), '   ');
@@ -294,7 +365,10 @@ void main() {
   testWidgets('discard restores loaded values without writing', (tester) async {
     final store = _ProfileStore();
     await _mount(tester, store);
-    await tester.enterText(find.byKey(const ValueKey('fullName')), 'Changed Name');
+    await tester.enterText(
+      find.byKey(const ValueKey('fullName')),
+      'Changed Name',
+    );
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
     final discard = find.widgetWithText(TextButton, 'Discard Unsaved Changes');
@@ -305,23 +379,44 @@ void main() {
     expect(find.text('Discard changes?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('fullName')))
-        .controller!.text, 'Changed Name');
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('fullName')))
+          .controller!
+          .text,
+      'Changed Name',
+    );
     await tester.tap(discard);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('fullName')))
-        .controller!.text, 'Nimal Silva');
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('fullName')))
+          .controller!
+          .text,
+      'Nimal Silva',
+    );
     expect(store.writes, isEmpty);
-    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,
-        'Save Changes')).onPressed, isNull);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Save Changes'),
+          )
+          .onPressed,
+      isNull,
+    );
   });
 
-  testWidgets('back warns for edits, then leaves when unchanged', (tester) async {
+  testWidgets('back warns for edits, then leaves when unchanged', (
+    tester,
+  ) async {
     final store = _ProfileStore();
     await _mount(tester, store);
-    await tester.enterText(find.byKey(const ValueKey('fullName')), 'Maya Perera');
+    await tester.enterText(
+      find.byKey(const ValueKey('fullName')),
+      'Maya Perera',
+    );
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(find.text('Discard unsaved changes?'), findsOneWidget);
@@ -340,7 +435,10 @@ void main() {
     final store = _ProfileStore();
     store.gate = Completer<void>();
     await _mount(tester, store);
-    await tester.enterText(find.byKey(const ValueKey('fullName')), 'Maya Perera');
+    await tester.enterText(
+      find.byKey(const ValueKey('fullName')),
+      'Maya Perera',
+    );
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
     final save = find.widgetWithText(FilledButton, 'Save Changes');
@@ -359,12 +457,22 @@ void main() {
   testWidgets('failed save keeps edits and permits retry', (tester) async {
     final store = _ProfileStore()..failOnce = true;
     await _mount(tester, store);
-    await tester.enterText(find.byKey(const ValueKey('fullName')), 'Maya Perera');
+    await tester.enterText(
+      find.byKey(const ValueKey('fullName')),
+      'Maya Perera',
+    );
     await _tapSave(tester);
-    expect(find.text('Could not save changes. Please try again.'),
-        findsOneWidget);
-    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('fullName')))
-        .controller!.text, 'Maya Perera');
+    expect(
+      find.text('Could not save changes. Please try again.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('fullName')))
+          .controller!
+          .text,
+      'Maya Perera',
+    );
     expect(find.byType(EditProfileScreen), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
@@ -373,8 +481,9 @@ void main() {
     expect(find.byType(ProfileScreen), findsOneWidget);
   });
 
-  testWidgets('missing customer document cannot create an incomplete user',
-      (tester) async {
+  testWidgets('missing customer document cannot create an incomplete user', (
+    tester,
+  ) async {
     final store = _ProfileStore()..document = null;
     await _mount(tester, store);
     expect(find.text('Your customer profile is unavailable.'), findsOneWidget);
@@ -382,10 +491,14 @@ void main() {
     expect(store.writes, isEmpty);
   });
 
-  testWidgets('existing shell keeps Profile selected on Edit Profile',
-      (tester) async {
+  testWidgets('existing shell keeps Profile selected on Edit Profile', (
+    tester,
+  ) async {
     final store = _ProfileStore();
-    final auth = AuthProvider(service: _ProfileAuthService(store), restore: false);
+    final auth = AuthProvider(
+      service: _ProfileAuthService(store),
+      restore: false,
+    );
     expect(await auth.signIn('test@example.com', 'password'), isTrue);
     final products = ProductProvider();
     final cart = CartProvider();
@@ -393,25 +506,30 @@ void main() {
     addTearDown(products.dispose);
     addTearDown(cart.dispose);
     appRouter.goNamed('edit-profile');
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AuthProvider>.value(value: auth),
-        ChangeNotifierProvider<ProductProvider>.value(value: products),
-        ChangeNotifierProvider<CartProvider>.value(value: cart),
-      ],
-      child: MaterialApp.router(
-        theme: AppTheme.lightTheme,
-        routerConfig: appRouter,
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<ProductProvider>.value(value: products),
+          ChangeNotifierProvider<CartProvider>.value(value: cart),
+        ],
+        child: MaterialApp.router(
+          theme: AppTheme.lightTheme,
+          routerConfig: appRouter,
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
     expect(find.byType(EditProfileScreen), findsOneWidget);
-    expect(tester.widget<NavigationBar>(find.byType(NavigationBar))
-        .selectedIndex, 4);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      4,
+    );
   });
 
-  testWidgets('small phone and keyboard retain scroll access to Save Changes',
-      (tester) async {
+  testWidgets('small phone and keyboard retain scroll access to Save Changes', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);

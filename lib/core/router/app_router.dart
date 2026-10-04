@@ -1,7 +1,12 @@
 import '../../features/cart_checkout/widgets/cart_badge.dart';
 
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../features/admin/screens/admin_users_screen.dart';
+import '../../features/auth/providers/auth_provider.dart';
 
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -40,9 +45,12 @@ import '../../features/shop_management/screens/incoming_orders_screen.dart';
 import '../../features/shop_management/screens/order_details_screen.dart';
 import '../../features/shop_management/screens/confirm_availability_screen.dart';
 import '../../features/shop_management/screens/update_order_status_screen.dart';
+import '../../features/shop_management/screens/contact_customer_screen.dart';
 import '../../features/shop_management/models/mock_incoming_order.dart';
 import '../../features/shop_management/models/mock_order_details.dart';
+import '../../features/shop_management/models/mock_shop_product.dart';
 import '../../features/shop_management/screens/inventory_screen.dart';
+import '../../features/shop_management/screens/inventory_stock_screen.dart';
 import '../../features/shop_management/screens/prepare_order_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
 import '../../features/shop_management/screens/shop_dashboard_screen.dart';
@@ -55,7 +63,54 @@ import '../../shared/screens/splash_screen.dart';
 // Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/shop-dashboard',
+  redirect: (context, state) {
+    final path = state.uri.path;
+    final isAdmin = path == '/admin/users';
+    final isShop =
+        const {
+          '/shop-dashboard',
+          '/inventory',
+          '/inventory-stock',
+          '/prepare-order',
+          '/product-management',
+          '/add-edit-product',
+          '/incoming-orders',
+          '/shop-profile',
+          '/shop-edit-profile',
+        }.contains(path) ||
+        const [
+          '/shop-order-details/',
+          '/confirm-availability/',
+          '/update-order-status/',
+          '/contact-customer/',
+        ].any(path.startsWith);
+    if (!isAdmin && !isShop) {
+      return null;
+    }
+    final auth = context.read<AuthProvider>();
+    if (isAdmin) {
+      return auth.user?.role == 'admin' ? null : '/login';
+    }
+    // The Firebase-free shop preview deliberately supports mock UI without login.
+    if (auth.user == null && Firebase.apps.isEmpty) {
+      return null;
+    }
+    if (auth.user?.role != 'shop') {
+      return '/login';
+    }
+    return switch (auth.user!.approvalStatus) {
+      'approved' => null,
+      null || 'pending' => '/shop-pending',
+      'rejected' => '/shop-rejected',
+      _ => '/login',
+    };
+  },
   routes: [
+    GoRoute(
+      path: '/admin/users',
+      name: 'admin-users',
+      builder: (context, state) => const AdminUsersScreen(),
+    ),
     ShellRoute(
       builder: (context, state, child) =>
           _CustomerNavigationShell(location: state.uri.path, child: child),
@@ -348,7 +403,15 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/add-edit-product',
       name: 'add-edit-product',
-      builder: (context, state) => const AddEditProductScreen(),
+      builder: (context, state) {
+        final selected = state.uri.queryParameters['product'];
+        for (final product in mockShopProducts) {
+          if (product.visualType.name == selected) {
+            return AddEditProductScreen(product: product);
+          }
+        }
+        return const AddEditProductScreen();
+      },
     ),
     GoRoute(
       path: '/incoming-orders',
@@ -405,6 +468,37 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/contact-customer/:orderId',
+      name: 'contact-customer',
+      builder: (context, state) {
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
+            return ContactCustomerScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/shop-edit-profile',
+      name: 'shop-edit-profile',
+      builder: (context, state) => const EditProfileScreen.shopPartner(),
+    ),
+    GoRoute(
+      path: '/shop-profile',
+      name: 'shop-profile',
+      builder: (context, state) => const ProfileScreen.shopPartner(),
+    ),
+    GoRoute(
+      path: '/inventory-stock',
+      name: 'inventory-stock',
+      builder: (context, state) => const InventoryStockScreen(),
+    ),
+    GoRoute(
       path: '/inventory',
       name: 'inventory',
       builder: (context, state) => const InventoryScreen(),
@@ -454,7 +548,9 @@ class _CustomerNavigationShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final index = _paths.indexOf(location);
+    final index = _paths.indexOf(
+      location == '/edit-profile' ? '/profile' : location,
+    );
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
