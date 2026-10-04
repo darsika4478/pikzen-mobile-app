@@ -58,13 +58,13 @@ void main() {
     await tester.tap(find.byTooltip('Notifications'));
     await tester.pump();
     expect(find.text('No new notifications in this preview.'), findsOneWidget);
-    await tester.tap(find.text('Products'));
+    await tester.tap(find.text('Profile'));
     await tester.pump();
     expect(
       tester
           .widget<DashboardBottomNav>(find.byType(DashboardBottomNav))
           .selectedIndex,
-      2,
+      3,
     );
     expect(tester.takeException(), isNull);
   });

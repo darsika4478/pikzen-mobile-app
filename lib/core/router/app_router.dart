@@ -417,7 +417,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/product-management',
       name: 'product-management',
-      builder: (context, state) => const ProductManagementScreen(),
+      builder: (context, state) => const ProductsScreen(),
     ),
     GoRoute(
       path: '/shop-dashboard',
