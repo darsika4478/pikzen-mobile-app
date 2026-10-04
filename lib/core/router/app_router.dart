@@ -1,7 +1,12 @@
 import '../../features/cart_checkout/widgets/cart_badge.dart';
 
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../features/admin/screens/admin_users_screen.dart';
+import '../../features/auth/providers/auth_provider.dart';
 
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -58,7 +63,54 @@ import '../../shared/screens/splash_screen.dart';
 // Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/shop-dashboard',
+  redirect: (context, state) {
+    final path = state.uri.path;
+    final isAdmin = path == '/admin/users';
+    final isShop =
+        const {
+          '/shop-dashboard',
+          '/inventory',
+          '/inventory-stock',
+          '/prepare-order',
+          '/product-management',
+          '/add-edit-product',
+          '/incoming-orders',
+          '/shop-profile',
+          '/shop-edit-profile',
+        }.contains(path) ||
+        const [
+          '/shop-order-details/',
+          '/confirm-availability/',
+          '/update-order-status/',
+          '/contact-customer/',
+        ].any(path.startsWith);
+    if (!isAdmin && !isShop) {
+      return null;
+    }
+    final auth = context.read<AuthProvider>();
+    if (isAdmin) {
+      return auth.user?.role == 'admin' ? null : '/login';
+    }
+    // The Firebase-free shop preview deliberately supports mock UI without login.
+    if (auth.user == null && Firebase.apps.isEmpty) {
+      return null;
+    }
+    if (auth.user?.role != 'shop') {
+      return '/login';
+    }
+    return switch (auth.user!.approvalStatus) {
+      'approved' => null,
+      null || 'pending' => '/shop-pending',
+      'rejected' => '/shop-rejected',
+      _ => '/login',
+    };
+  },
   routes: [
+    GoRoute(
+      path: '/admin/users',
+      name: 'admin-users',
+      builder: (context, state) => const AdminUsersScreen(),
+    ),
     ShellRoute(
       builder: (context, state, child) =>
           _CustomerNavigationShell(location: state.uri.path, child: child),
@@ -496,7 +548,9 @@ class _CustomerNavigationShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final index = _paths.indexOf(location);
+    final index = _paths.indexOf(
+      location == '/edit-profile' ? '/profile' : location,
+    );
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
