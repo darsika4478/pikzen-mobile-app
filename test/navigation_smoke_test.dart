@@ -8,7 +8,6 @@ import 'package:pikzen/features/auth/screens/login_screen.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
 import 'package:pikzen/features/cart_checkout/providers/checkout_provider.dart';
 import 'package:pikzen/features/cart_checkout/screens/cart_screen.dart';
-import 'package:pikzen/features/cart_checkout/screens/checkout_screen.dart';
 import 'package:pikzen/features/product_discovery/providers/product_provider.dart';
 import 'package:pikzen/features/product_discovery/screens/customer_home_screen.dart';
 import 'package:pikzen/features/product_discovery/screens/categories_screen.dart';
@@ -140,9 +139,10 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Proceed to Checkout'));
-    await tester.pumpAndSettle();
-    expect(find.byType(CheckoutScreen), findsOneWidget);
+    final proceed = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Proceed to Checkout'),
+    );
+    expect(proceed.onPressed, isNull);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

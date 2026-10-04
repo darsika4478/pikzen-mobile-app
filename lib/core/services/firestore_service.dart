@@ -22,6 +22,16 @@ class FirestoreService {
             .toList(),
       );
 
+  /// Fetches authoritative prices and stock before entering checkout.
+  Future<List<ProductModel>> currentProducts() async {
+    final snapshot = await database
+        .collection('products')
+        .get(const GetOptions(source: Source.server));
+    return snapshot.docs
+        .map((doc) => ProductModel.fromMap(doc.id, doc.data()))
+        .toList(growable: false);
+  }
+
   Stream<List<UserModel>> users() => database
       .collection('users')
       .snapshots()

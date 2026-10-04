@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../../models/cart_item_model.dart';
 import '../../models/order_model.dart';
+import '../../models/product_model.dart';
 import 'notification_service.dart';
 
 class OrderActionException implements Exception {
@@ -158,40 +159,129 @@ class OrderService {
         'The payment state does not match the method.',
       );
     }
+    if (draft.shopId == null || draft.shopId!.isEmpty) {
+      throw const OrderActionException('A pickup shop is required.');
+    }
+    if (draft.pickupAt == null || !draft.pickupAt!.isAfter(DateTime.now())) {
+      throw const OrderActionException('Select a future pickup time.');
+    }
+    if (!const {
+      'allowReplacement',
+      'contactMe',
+      'noReplacement',
+    }.contains(draft.replacementPreference)) {
+      throw const OrderActionException('Select a replacement preference.');
+    }
+    if (draft.items.map((item) => item.product.id).toSet().length !=
+        draft.items.length) {
+      throw const OrderActionException('An item appears twice in this order.');
+    }
 
     final ref = _orders.doc(draft.id);
-    await database.runTransaction((transaction) async {
-      final snapshot = await transaction.get(ref);
-      if (snapshot.exists) {
-        final existing = OrderModel.fromFirestore(
-          snapshot.id,
-          snapshot.data()!,
-        );
-        if (existing.userId != customerId ||
-            existing.paymentMethod != paymentMethod ||
-            existing.paymentStatus != paymentStatus ||
-            existing.effectiveTotalMinor != draft.effectiveTotalMinor ||
-            existing.pickupAt != draft.pickupAt ||
-            existing.replacementPreference != draft.replacementPreference ||
-            !_sameItems(existing.items, draft.items)) {
-          throw const OrderActionException('This order ID is already in use.');
-        }
-        return;
+    OrderModel matchingOrder(DocumentSnapshot<Map<String, dynamic>> snapshot) {
+      final existing = OrderModel.fromFirestore(snapshot.id, snapshot.data()!);
+      if (existing.userId != customerId ||
+          existing.shopId != draft.shopId ||
+          existing.paymentMethod != paymentMethod ||
+          existing.paymentStatus != paymentStatus ||
+          existing.effectiveTotalMinor != draft.effectiveTotalMinor ||
+          existing.effectiveCurrencyCode != draft.effectiveCurrencyCode ||
+          existing.pickupAt != draft.pickupAt ||
+          existing.replacementPreference != draft.replacementPreference ||
+          !_sameItems(existing.items, draft.items)) {
+        throw const OrderActionException('This order ID is already in use.');
       }
+      return existing;
+    }
 
-      final order = draft.copyWith(
-        status: 'placed',
-        paymentMethod: paymentMethod,
-        paymentStatus: paymentStatus,
-      );
-      transaction.set(ref, order.toFirestore(serverTimestamps: true));
-    });
+    // The rules allow customers to read their saved orders, but may deny a
+    // read of an order ID that has not been created yet.
+    try {
+      final existing = await ref.get();
+      if (existing.exists) return matchingOrder(existing);
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') rethrow;
+    }
+
+    final order = draft.copyWith(
+      status: 'placed',
+      paymentMethod: paymentMethod,
+      paymentStatus: paymentStatus,
+    );
+    try {
+      await database.runTransaction((transaction) async {
+        final current = <ProductModel?>[];
+        for (final item in draft.items) {
+          final snapshot = await transaction.get(
+            database.collection('products').doc(item.product.id),
+          );
+          current.add(
+            snapshot.exists
+                ? ProductModel.fromMap(snapshot.id, snapshot.data()!)
+                : null,
+          );
+        }
+        for (var index = 0; index < draft.items.length; index++) {
+          validateCurrentProduct(
+            draft.items[index],
+            current[index],
+            shopId: draft.shopId!,
+          );
+        }
+        var currentTotal = 0;
+        for (var index = 0; index < current.length; index++) {
+          currentTotal +=
+              current[index]!.priceMinor * draft.items[index].quantity;
+        }
+        if (currentTotal != draft.effectiveTotalMinor) {
+          throw const OrderActionException(
+            'Order total changed. Review your cart before paying.',
+          );
+        }
+        // Product stock is checked in the same transaction as the order
+        // write. Existing rules reserve stock updates for shop owners.
+        transaction.set(ref, order.toFirestore(serverTimestamps: true));
+      });
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') rethrow;
+      // A concurrent retry may have created the same order. The rules deny
+      // replacing it, so return it only if its contents match this draft.
+      final existing = await ref.get();
+      if (!existing.exists) rethrow;
+      return matchingOrder(existing);
+    }
 
     final saved = await ref.get();
     if (!saved.exists) {
       throw const OrderActionException('The order could not be saved.');
     }
     return OrderModel.fromFirestore(saved.id, saved.data()!);
+  }
+
+  static void validateCurrentProduct(
+    CartItemModel ordered,
+    ProductModel? current, {
+    required String shopId,
+  }) {
+    if (current == null) {
+      throw OrderActionException(
+        '${ordered.product.name} is no longer available.',
+      );
+    }
+    if (ordered.quantity < 1 || current.stockQuantity < ordered.quantity) {
+      throw OrderActionException(
+        '${current.name} has only ${current.stockQuantity} available. Review your cart.',
+      );
+    }
+    if (current.shopId != shopId) {
+      throw const OrderActionException('Place items from one store at a time.');
+    }
+    if (current.priceMinor != ordered.product.priceMinor ||
+        current.currencyCode != ordered.product.currencyCode) {
+      throw OrderActionException(
+        '${current.name} changed price. Review your cart.',
+      );
+    }
   }
 
   Future<void> cancelOrder(
