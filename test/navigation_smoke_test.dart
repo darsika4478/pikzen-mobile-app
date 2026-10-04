@@ -16,6 +16,8 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const PikZenApp());
+    // Keep coverage of the existing customer flow after changing the initial route.
+    appRouter.go('/splash');
     await tester.pumpAndSettle();
     expect(find.byType(SplashScreen), findsOneWidget);
     await tester.tap(find.widgetWithText(ElevatedButton, 'Continue'));
@@ -74,8 +76,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: title);
       expect(appRouter.canPop(), isTrue, reason: title);
-      expect(find.byType(BackButton), findsOneWidget, reason: title);
-      await tester.tap(find.byType(BackButton));
+      if (title == 'Shop Dashboard') {
+        // The dashboard deliberately has its own header rather than an AppBar.
+        appRouter.pop();
+      } else {
+        expect(find.byType(BackButton), findsOneWidget, reason: title);
+        await tester.tap(find.byType(BackButton));
+      }
       await tester.pumpAndSettle();
       expect(find.byType(CustomerHomeScreen), findsOneWidget, reason: title);
       expect(tester.takeException(), isNull, reason: title);

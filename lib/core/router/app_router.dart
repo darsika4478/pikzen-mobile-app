@@ -33,7 +33,7 @@ import '../../shared/screens/splash_screen.dart';
 
 // Temporary testing navigation. No authentication checks are performed.
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/splash',
+  initialLocation: '/shop-dashboard',
   routes: [
     ShellRoute(
       builder: (context, state, child) =>
@@ -66,7 +66,7 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
-    GoRoute(path: '/', redirect: (context, state) => '/splash'),
+    GoRoute(path: '/', redirect: (context, state) => '/shop-dashboard'),
     GoRoute(
       path: '/forgot-password',
       name: 'forgot-password',
