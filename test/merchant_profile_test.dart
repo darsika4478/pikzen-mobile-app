@@ -5,6 +5,7 @@ import 'package:pikzen/core/router/app_router.dart';
 import 'package:pikzen/core/theme/app_theme.dart';
 import 'package:pikzen/features/profile/screens/profile_screen.dart';
 import 'package:pikzen/features/profile/widgets/merchant_profile_view.dart';
+import 'package:pikzen/features/profile/widgets/logout_confirmation_dialog.dart';
 import 'package:pikzen/features/shop_management/screens/shop_dashboard_screen.dart';
 import 'package:pikzen/features/shop_management/screens/incoming_orders_screen.dart';
 import 'package:pikzen/features/shop_management/screens/product_management_screen.dart';
@@ -77,17 +78,17 @@ void main() {
       await tester.ensureVisible(find.text('Logout'));
       await tester.tap(find.text('Logout'));
       await tester.pumpAndSettle();
-      expect(find.text('Logout?'), findsOneWidget);
+      expect(find.byType(LogoutConfirmationDialog), findsOneWidget);
       expect(find.text('Are you sure you want to logout?'), findsOneWidget);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(LogoutConfirmationDialog), findsNothing);
       expect(find.text('Logout selected'), findsNothing);
       await tester.tap(find.text('Logout'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(LogoutConfirmationDialog),
           matching: find.text('Logout'),
         ),
       );
