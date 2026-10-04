@@ -2,11 +2,6 @@ import '../../features/cart_checkout/widgets/cart_badge.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-
-import '../../features/admin/screens/admin_users_screen.dart';
-
-import '../../features/auth/providers/auth_provider.dart';
 
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -42,6 +37,9 @@ import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/settings_screen.dart';
 import '../../features/shop_management/screens/add_edit_product_screen.dart';
 import '../../features/shop_management/screens/incoming_orders_screen.dart';
+import '../../features/shop_management/screens/order_details_screen.dart';
+import '../../features/shop_management/models/mock_incoming_order.dart';
+import '../../features/shop_management/models/mock_order_details.dart';
 import '../../features/shop_management/screens/inventory_screen.dart';
 import '../../features/shop_management/screens/prepare_order_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
@@ -175,11 +173,6 @@ final GoRouter appRouter = GoRouter(
       name: 'shop-rejected',
       builder: (context, state) =>
           const ShopApprovalStatusScreen(rejected: true),
-    ),
-    GoRoute(
-      path: '/checkout',
-      name: 'checkout',
-      builder: (context, state) => const CheckoutScreen(),
     ),
     GoRoute(
       path: '/order-confirmation',
@@ -359,6 +352,23 @@ final GoRouter appRouter = GoRouter(
       path: '/incoming-orders',
       name: 'incoming-orders',
       builder: (context, state) => const IncomingOrdersScreen(),
+    ),
+    GoRoute(
+      path: '/shop-order-details/:orderId',
+      name: 'shop-order-details',
+      builder: (context, state) {
+        final id = state.pathParameters['orderId'];
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == id) {
+            return OrderDetailsScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
     ),
     GoRoute(
       path: '/inventory',

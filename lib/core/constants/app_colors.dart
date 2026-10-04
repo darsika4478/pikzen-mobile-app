@@ -11,6 +11,11 @@ class AppColors {
   static const Color rejectRed = Color(0xFFF04444);
   static const Color rejectBackground = Color(0xFFFFF4F4);
   static const Color rejectBorder = Color(0xFFF8CACA);
+  static const Color noticeBackground = Color(0xFFFFF9E9);
+  static const Color noticeBorder = Color(0xFFF6D58A);
+  static const Color noticeText = Color(0xFF8B7043);
+  static const Color bananaBackground = Color(0xFFFFF8DA);
+  static const Color milkBackground = Color(0xFFEAF3FC);
   static const Color primaryLight = Color(0xFF66BB6A);
   static const Color accent = Color(0xFFFF9800);
 

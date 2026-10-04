@@ -78,8 +78,12 @@ class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
                             order: mockIncomingOrders[index],
                             onAccept: () => _message('Order accepted'),
                             onReject: () => _message('Order rejected'),
-                            onDetails: () => _message(
-                              '${mockIncomingOrders[index].orderId} • ${mockIncomingOrders[index].customerName}',
+                            onDetails: () => context.pushNamed(
+                              'shop-order-details',
+                              pathParameters: {
+                                'orderId': mockIncomingOrders[index].orderId
+                                    .substring(1),
+                              },
                             ),
                           ),
                         ),
