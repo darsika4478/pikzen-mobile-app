@@ -12,6 +12,7 @@ import '../../../models/order_model.dart';
 import '../../../models/user_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../product_discovery/providers/product_provider.dart';
+import '../widgets/merchant_profile_view.dart';
 
 /// Customer overview backed by the app's existing account, catalog and orders.
 class ProfileScreen extends StatefulWidget {
@@ -19,7 +20,15 @@ class ProfileScreen extends StatefulWidget {
     super.key,
     this.profileDocuments,
     this.ordersForCustomer,
-  });
+  }) : isShopPartner = false;
+
+  /// Static merchant UI; it does not bind to customer account services.
+  const ProfileScreen.shopPartner({super.key})
+    : isShopPartner = true,
+      profileDocuments = null,
+      ordersForCustomer = null;
+
+  final bool isShopPartner;
 
   /// Optional sources let the connected screen be exercised without Firebase.
   final Stream<Map<String, dynamic>?> Function(String uid)? profileDocuments;
@@ -102,6 +111,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isShopPartner) {
+      return const MerchantProfileView();
+    }
     final auth = context.watch<AuthProvider>();
     final firebaseUser = Firebase.apps.isEmpty
         ? null

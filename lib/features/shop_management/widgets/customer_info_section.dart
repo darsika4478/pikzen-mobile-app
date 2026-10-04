@@ -8,9 +8,11 @@ class CustomerInfoSection extends StatelessWidget {
     super.key,
     required this.order,
     required this.onCall,
+    required this.onContact,
   });
   final MockOrderDetails order;
   final VoidCallback onCall;
+  final VoidCallback onContact;
   @override
   Widget build(BuildContext context) => Row(
     children: [
@@ -31,9 +33,19 @@ class CustomerInfoSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              order.customerName,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            Tooltip(
+              message: 'Contact Customer',
+              child: InkWell(
+                onTap: onContact,
+                borderRadius: BorderRadius.circular(4),
+                child: Text(
+                  order.customerName,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 5),
             Row(
