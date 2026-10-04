@@ -2,11 +2,6 @@ import '../../features/cart_checkout/widgets/cart_badge.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-
-import '../../features/admin/screens/admin_users_screen.dart';
-
-import '../../features/auth/providers/auth_provider.dart';
 
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -42,6 +37,11 @@ import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/settings_screen.dart';
 import '../../features/shop_management/screens/add_edit_product_screen.dart';
 import '../../features/shop_management/screens/incoming_orders_screen.dart';
+import '../../features/shop_management/screens/order_details_screen.dart';
+import '../../features/shop_management/screens/confirm_availability_screen.dart';
+import '../../features/shop_management/screens/update_order_status_screen.dart';
+import '../../features/shop_management/models/mock_incoming_order.dart';
+import '../../features/shop_management/models/mock_order_details.dart';
 import '../../features/shop_management/screens/inventory_screen.dart';
 import '../../features/shop_management/screens/prepare_order_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
@@ -54,42 +54,7 @@ import '../../shared/screens/splash_screen.dart';
 
 // Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/splash',
-  redirect: (context, state) {
-    final auth = context.read<AuthProvider>();
-    final path = state.uri.path;
-    const shopPaths = {
-      '/shop-dashboard',
-      '/add-edit-product',
-      '/incoming-orders',
-      '/inventory',
-      '/prepare-order',
-      '/product-management',
-    };
-    if (path == '/admin/users' && auth.user?.role != 'admin') {
-      return '/login';
-    }
-    if (path == '/shop-pending' || path == '/shop-rejected') {
-      return switch (auth.destination) {
-        'shop-pending' when path == '/shop-pending' => null,
-        'shop-pending' => '/shop-pending',
-        'shop-rejected' when path == '/shop-rejected' => null,
-        'shop-rejected' => '/shop-rejected',
-        'shop-dashboard' => '/shop-dashboard',
-        'customer-home' => '/customer-home',
-        AuthProvider.adminRoute => '/admin/users',
-        _ => '/login',
-      };
-    }
-    if (shopPaths.contains(path) && auth.user?.isApprovedShop != true) {
-      return switch (auth.destination) {
-        'shop-pending' => '/shop-pending',
-        'shop-rejected' => '/shop-rejected',
-        _ => '/login',
-      };
-    }
-    return null;
-  },
+  initialLocation: '/shop-dashboard',
   routes: [
     ShellRoute(
       builder: (context, state, child) =>
@@ -173,12 +138,7 @@ final GoRouter appRouter = GoRouter(
         ),
       ],
     ),
-    GoRoute(
-      path: '/admin/users',
-      name: 'admin-users',
-      builder: (context, state) => const AdminUsersScreen(),
-    ),
-    GoRoute(path: '/', redirect: (context, state) => '/splash'),
+    GoRoute(path: '/', redirect: (context, state) => '/shop-dashboard'),
     GoRoute(
       path: '/forgot-password',
       name: 'forgot-password',
@@ -396,6 +356,55 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const IncomingOrdersScreen(),
     ),
     GoRoute(
+      path: '/shop-order-details/:orderId',
+      name: 'shop-order-details',
+      builder: (context, state) {
+        final id = state.pathParameters['orderId'];
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == id) {
+            return OrderDetailsScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/confirm-availability/:orderId',
+      name: 'confirm-availability',
+      builder: (context, state) {
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
+            return ConfirmAvailabilityScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/update-order-status/:orderId',
+      name: 'update-order-status',
+      builder: (context, state) {
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
+            return UpdateOrderStatusScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
+    ),
+    GoRoute(
       path: '/inventory',
       name: 'inventory',
       builder: (context, state) => const InventoryScreen(),
@@ -408,7 +417,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/product-management',
       name: 'product-management',
-      builder: (context, state) => const ProductManagementScreen(),
+      builder: (context, state) => const ProductsScreen(),
     ),
     GoRoute(
       path: '/shop-dashboard',

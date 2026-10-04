@@ -43,6 +43,7 @@ void main() {
         ),
       ),
     );
+    appRouter.go('/splash');
     await tester.pumpAndSettle();
     expect(find.byType(SplashScreen), findsOneWidget);
     await tester.pump(const Duration(seconds: 8));
