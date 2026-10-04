@@ -38,6 +38,8 @@ import '../../features/profile/screens/settings_screen.dart';
 import '../../features/shop_management/screens/add_edit_product_screen.dart';
 import '../../features/shop_management/screens/incoming_orders_screen.dart';
 import '../../features/shop_management/screens/order_details_screen.dart';
+import '../../features/shop_management/screens/confirm_availability_screen.dart';
+import '../../features/shop_management/screens/update_order_status_screen.dart';
 import '../../features/shop_management/models/mock_incoming_order.dart';
 import '../../features/shop_management/models/mock_order_details.dart';
 import '../../features/shop_management/screens/inventory_screen.dart';
@@ -361,6 +363,38 @@ final GoRouter appRouter = GoRouter(
         for (final order in mockIncomingOrders) {
           if (order.orderId.substring(1) == id) {
             return OrderDetailsScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/confirm-availability/:orderId',
+      name: 'confirm-availability',
+      builder: (context, state) {
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
+            return ConfirmAvailabilityScreen(
+              order: MockOrderDetails.fromIncoming(order),
+            );
+          }
+        }
+        return const Scaffold(
+          body: SafeArea(child: Center(child: Text('Order not found'))),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/update-order-status/:orderId',
+      name: 'update-order-status',
+      builder: (context, state) {
+        for (final order in mockIncomingOrders) {
+          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
+            return UpdateOrderStatusScreen(
               order: MockOrderDetails.fromIncoming(order),
             );
           }
