@@ -1,18 +1,22 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
 import '../../../models/cart_item_model.dart';
 import '../../../models/product_model.dart';
 import '../../product_discovery/widgets/discovery_ui.dart';
 import '../../product_discovery/widgets/product_card.dart';
+import '../../product_discovery/providers/product_provider.dart';
 import '../providers/cart_provider.dart';
 
-// Checkout has no fee or delivery rule yet. Keep these values explicit.
+// Checkout has no pickup or service fee rule yet.
 const _serviceFeeMinor = 0;
-const _deliveryFeeMinor = 0;
+const _pickupFeeMinor = 0;
 
 String _rupees(int minor) {
   final whole = (minor ~/ 100).toString().replaceAllMapped(
@@ -43,6 +47,64 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   final _promoController = TextEditingController();
+  bool _checkingStock = false;
+
+  Future<void> _proceed() async {
+    final cart = context.read<CartProvider>();
+    if (_checkingStock || cart.items.isEmpty) return;
+    if (Firebase.apps.isEmpty || FirebaseAuth.instance.currentUser == null) {
+      context.goNamed('login');
+      return;
+    }
+    final before = {
+      for (final item in cart.items)
+        item.product.id: (
+          quantity: item.quantity,
+          price: item.product.priceMinor,
+          stock: item.product.stockQuantity,
+          shop: item.product.shopId,
+        ),
+    };
+    setState(() => _checkingStock = true);
+    try {
+      final latest = await FirestoreService().currentProducts();
+      if (!mounted) return;
+      cart.syncProducts(latest);
+      final changed =
+          cart.items.length != before.length ||
+          cart.items.any(
+            (item) =>
+                before[item.product.id] !=
+                (
+                  quantity: item.quantity,
+                  price: item.product.priceMinor,
+                  stock: item.product.stockQuantity,
+                  shop: item.product.shopId,
+                ),
+          );
+      if (changed || cart.items.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Product stock or prices changed. Review your cart.'),
+          ),
+        );
+        return;
+      }
+      context.pushNamed('checkout');
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not refresh products. Check your connection and retry.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingStock = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -65,6 +127,7 @@ class _CartScreenState extends State<CartScreen> {
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
+    final products = context.watch<ProductProvider?>();
     final items = cart.items;
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -122,12 +185,18 @@ class _CartScreenState extends State<CartScreen> {
               width: double.infinity,
               height: 52,
               child: FilledButton.icon(
-                onPressed: items.isEmpty
+                onPressed:
+                    items.isEmpty ||
+                        _checkingStock ||
+                        products?.loading == true ||
+                        products?.isDemo == true
                     ? null
-                    : () => context.pushNamed('checkout'),
+                    : _proceed,
                 iconAlignment: IconAlignment.end,
                 icon: const Icon(Icons.arrow_forward, size: 18),
-                label: const Text('Proceed to Checkout'),
+                label: Text(
+                  _checkingStock ? 'Checking stock...' : 'Proceed to Checkout',
+                ),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   shape: RoundedRectangleBorder(
@@ -136,6 +205,18 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
             ),
+            if (items.isNotEmpty && products?.isDemo == true)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Checkout is available when live products load.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.secondaryText,
+                  ),
+                ),
+              ),
             const SizedBox(height: 10),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -189,7 +270,7 @@ class _DeliveryBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Free Local Delivery Unlocked!',
+                'Free Pickup Available',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
               ),
               SizedBox(height: 2),
@@ -512,11 +593,11 @@ class _OrderSummary extends StatelessWidget {
         const SizedBox(height: 8),
         _row('Service & Handling Fee', _rupees(_serviceFeeMinor)),
         const SizedBox(height: 8),
-        _row('Estimated Delivery', 'FREE', green: true),
+        _row('Pickup Fee', 'FREE', green: true),
         const Divider(height: 28),
         _row(
           'Total',
-          _rupees(subtotalMinor + _serviceFeeMinor + _deliveryFeeMinor),
+          _rupees(subtotalMinor + _serviceFeeMinor + _pickupFeeMinor),
           bold: true,
           green: true,
         ),

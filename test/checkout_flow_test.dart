@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pikzen/core/router/app_router.dart';
 import 'package:pikzen/core/theme/app_theme.dart';
+import 'package:pikzen/features/auth/providers/auth_provider.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
 import 'package:pikzen/features/cart_checkout/providers/checkout_provider.dart';
 import 'package:pikzen/features/cart_checkout/screens/checkout_screen.dart';
@@ -10,6 +11,7 @@ import 'package:pikzen/features/cart_checkout/screens/pickup_date_screen.dart';
 import 'package:pikzen/features/cart_checkout/screens/pickup_time_screen.dart';
 import 'package:pikzen/features/cart_checkout/screens/replacement_preference_screen.dart';
 import 'package:pikzen/models/product_model.dart';
+import 'package:pikzen/models/user_model.dart';
 
 void main() {
   testWidgets(
@@ -19,8 +21,16 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final cart = CartProvider();
       final checkout = CheckoutProvider();
+      final auth = AuthProvider(restore: false)
+        ..user = const UserModel(
+          id: 'customer',
+          name: 'Customer',
+          email: 'customer@example.com',
+          role: 'customer',
+        );
       addTearDown(cart.dispose);
       addTearDown(checkout.dispose);
+      addTearDown(auth.dispose);
       expect(
         cart.add(
           const ProductModel(
@@ -36,6 +46,7 @@ void main() {
       await tester.pumpWidget(
         MultiProvider(
           providers: [
+            ChangeNotifierProvider.value(value: auth),
             ChangeNotifierProvider.value(value: cart),
             ChangeNotifierProvider.value(value: checkout),
           ],

@@ -70,24 +70,26 @@ Future<AuthProvider> _signedIn(_CountingAuthService service) async {
   return auth;
 }
 
-Widget _app(GoRouter router, AuthProvider auth, ProductProvider products,
-        {double textScale = 1}) =>
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AuthProvider>.value(value: auth),
-        ChangeNotifierProvider<ProductProvider>.value(value: products),
-      ],
-      child: MaterialApp.router(
-        theme: AppTheme.lightTheme,
-        routerConfig: router,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(textScale),
-          ),
-          child: child!,
-        ),
-      ),
-    );
+Widget _app(
+  GoRouter router,
+  AuthProvider auth,
+  ProductProvider products, {
+  double textScale = 1,
+}) => MultiProvider(
+  providers: [
+    ChangeNotifierProvider<AuthProvider>.value(value: auth),
+    ChangeNotifierProvider<ProductProvider>.value(value: products),
+  ],
+  child: MaterialApp.router(
+    theme: AppTheme.lightTheme,
+    routerConfig: router,
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
+  ),
+);
 
 void main() {
   testWidgets(
@@ -286,13 +288,12 @@ void main() {
     await tester.pumpAndSettle();
     final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
     expect(bar.selectedIndex, 4);
-    expect(bar.destinations.cast<NavigationDestination>().map((destination) => destination.label), [
-      'Home',
-      'Categories',
-      'Cart',
-      'Favourites',
-      'Profile',
-    ]);
+    expect(
+      bar.destinations.cast<NavigationDestination>().map(
+        (destination) => destination.label,
+      ),
+      ['Home', 'Categories', 'Cart', 'Favourites', 'Profile'],
+    );
     await tester.tap(find.text('Home').last);
     await tester.pumpAndSettle();
     expect(

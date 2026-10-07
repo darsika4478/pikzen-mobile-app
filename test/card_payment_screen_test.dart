@@ -26,7 +26,9 @@ void main() {
       expect(find.byType(PaymentMethodScreen), findsOneWidget);
     });
 
-    testWidgets('a non-Luhn card is rejected without a charge', (tester) async {
+    testWidgets('any 16-digit dummy card passes format validation', (
+      tester,
+    ) async {
       final router = _router();
       addTearDown(router.dispose);
 
@@ -38,12 +40,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(CardPaymentScreen), findsOneWidget);
-      expect(find.text('Check the card number'), findsOneWidget);
+      expect(find.text('Enter 16 digits'), findsNothing);
       expect(find.byType(PaymentResultScreen), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('an expired card is rejected without a charge', (tester) async {
+    testWidgets('a past MM/YY passes demo format validation', (tester) async {
       final router = _router();
       addTearDown(router.dispose);
 
@@ -54,7 +56,7 @@ void main() {
       await tester.tap(find.text('Pay LKR 2,450.00'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Card has expired'), findsOneWidget);
+      expect(find.text('Use MM/YY'), findsNothing);
       expect(find.byType(PaymentResultScreen), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -70,7 +72,7 @@ void main() {
       await tester.tap(find.text('Pay LKR 2,450.00'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Enter a valid card number'), findsOneWidget);
+      expect(find.text('Enter 16 digits'), findsOneWidget);
       expect(find.byType(PaymentResultScreen), findsNothing);
     });
 

@@ -33,6 +33,7 @@ class PaymentResultScreen extends StatefulWidget {
 class _PaymentResultScreenState extends State<PaymentResultScreen> {
   final _orders = OrderService();
   Stream<OrderModel?>? _stream;
+  Stream<PaymentModel?>? _payment;
   bool _viewRecorded = false;
 
   @override
@@ -41,6 +42,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
     final id = widget.orderId ?? widget.order?.id;
     if (id != null && Firebase.apps.isNotEmpty) {
       _stream = _orders.watchOrder(id);
+      _payment = _orders.watchPayment(id);
     }
   }
 
@@ -77,6 +79,7 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
         }
         _recordView(order.id);
         final cash = order.paymentMethod == 'cashOnPickup';
+        final demo = order.paymentStatus == 'demo';
         final id = order.id.startsWith('#') ? order.id : '#${order.id}';
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -118,7 +121,11 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
                         ),
                         const SizedBox(height: 26),
                         Text(
-                          cash ? 'Order Placed!' : 'Payment Successful!',
+                          cash
+                              ? 'Order Placed!'
+                              : demo
+                              ? 'Demo Payment Complete'
+                              : 'Payment Successful!',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 25,
@@ -154,8 +161,35 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
                             children: [
                               _row('Order ID', id),
                               const Divider(height: 30),
+                              StreamBuilder<PaymentModel?>(
+                                stream: _payment,
+                                builder: (context, receipt) {
+                                  final payment = receipt.data;
+                                  if (payment == null) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final via = payment.cardLast4 != null
+                                      ? ' • Card •••• ${payment.cardLast4}'
+                                      : payment.provider != null
+                                      ? ' • ${payment.provider}'
+                                      : '';
+                                  return Column(
+                                    children: [
+                                      _row(
+                                        'Receipt',
+                                        '${payment.reference}$via',
+                                      ),
+                                      const Divider(height: 30),
+                                    ],
+                                  );
+                                },
+                              ),
                               _row(
-                                cash ? 'Amount Due' : 'Amount Paid',
+                                cash
+                                    ? 'Amount Due'
+                                    : demo
+                                    ? 'Demo Amount'
+                                    : 'Amount Paid',
                                 formatPaymentAmount(
                                   order.effectiveTotalMinor,
                                   order.effectiveCurrencyCode,

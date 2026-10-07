@@ -119,7 +119,7 @@ void main() {
     await tester.tap(find.text('View All'));
     await tester.pumpAndSettle();
     expect(find.text('Existing Cart'), findsOneWidget);
-    router.pop();
+    router.goNamed('review-order');
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('Payment Method'),
@@ -183,7 +183,7 @@ void main() {
     expect(find.text('Pay LKR 1,060.00'), findsOneWidget);
     await tester.tap(find.text('Pay LKR 1,060.00'));
     await tester.pump();
-    expect(find.text('Enter a valid card number'), findsOneWidget);
+    expect(find.text('Enter 16 digits'), findsOneWidget);
     expect(checkout.paymentAttemptCount, 0);
     final expiry =
         '12/${((DateTime.now().year + 2) % 100).toString().padLeft(2, '0')}';

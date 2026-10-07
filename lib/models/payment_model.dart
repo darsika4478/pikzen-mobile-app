@@ -1,6 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'order_model.dart';
 
-/// Basic payment data without payment-provider integration or processing logic.
+/// Simulated payment receipt stored at payments/{orderId}. No payment provider
+/// is contacted; card receipts keep only the last four dummy digits.
 class PaymentModel {
   const PaymentModel({
     required this.id,
@@ -8,6 +11,12 @@ class PaymentModel {
     required this.amountMinor,
     required this.currencyCode,
     required this.createdAt,
+    this.method = 'card',
+    this.status = 'demo_paid',
+    this.reference = '',
+    this.provider,
+    this.cardLast4,
+    this.paidAt,
   });
 
   final String id;
@@ -19,6 +28,53 @@ class PaymentModel {
   /// ISO 4217 currency code, for example LKR.
   final String currencyCode;
   final DateTime createdAt;
+
+  /// PaymentMethod.identifier of the method used.
+  final String method;
+
+  /// demo_paid, pending (cash before pickup) or paid (cash collected).
+  final String status;
+
+  /// Human-readable demo receipt reference, for example DEMO-AB12CD34.
+  final String reference;
+
+  /// Selected wallet or bank name, or 'Demo card'.
+  final String? provider;
+  final String? cardLast4;
+  final DateTime? paidAt;
+
+  factory PaymentModel.fromFirestore(String id, Map<String, dynamic> data) {
+    DateTime? date(Object? value) => value is Timestamp ? value.toDate() : null;
+    return PaymentModel(
+      id: id,
+      orderId: (data['orderId'] ?? id).toString(),
+      amountMinor: data['amountMinor'] is int ? data['amountMinor'] as int : 0,
+      currencyCode: (data['currencyCode'] ?? 'LKR').toString(),
+      createdAt: date(data['createdAt']) ?? DateTime.now(),
+      method: (data['method'] ?? 'card').toString(),
+      status: (data['status'] ?? '').toString(),
+      reference: (data['reference'] ?? '').toString(),
+      provider: data['provider'] as String?,
+      cardLast4: data['cardLast4'] as String?,
+      paidAt: date(data['paidAt']),
+    );
+  }
+
+  /// Receipt reference derived from the order ID, stable across retries.
+  static String referenceFor(String orderId) {
+    final clean = orderId.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+    final head = clean.length > 8 ? clean.substring(0, 8) : clean;
+    return 'DEMO-${head.toUpperCase()}';
+  }
+}
+
+/// Dummy details chosen on the payment screens. Never holds a full card
+/// number, CVV or bank credential.
+class DemoPaymentDetails {
+  const DemoPaymentDetails({this.provider, this.cardLast4});
+
+  final String? provider;
+  final String? cardLast4;
 }
 
 /// Stable metadata and destinations for the four prototype payment methods.

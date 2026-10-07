@@ -1,5 +1,7 @@
 {
     "cmake.sourceDirectory": "C:/Users/HP/OneDrive/Documents/GitHub/pikzen-mobile-app/linux",
     "dart.flutterSdkPath": "C:/dev/flutter",
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.gradle.java.home": "C:/Users/HP/.vscode/extensions/redhat.java-1.56.0-win32-x64/jre/21.0.12.1-win32-x86_64",
+    "java.import.gradle.wrapper.enabled": true
 }

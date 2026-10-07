@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/order_service.dart';
 import '../../../core/services/payment_service.dart';
 import '../../../models/order_model.dart';
 import '../../../models/payment_model.dart';
@@ -70,11 +71,15 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         'payment-result',
         extra: _checkout.successExtra(PaymentMethod.cashOnPickup, order),
       );
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('The order could not be saved. Please try again.'),
+          SnackBar(
+            content: Text(
+              error is OrderActionException
+                  ? error.message
+                  : 'The order could not be saved. Please try again.',
+            ),
           ),
         );
       }
