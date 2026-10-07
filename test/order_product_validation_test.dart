@@ -51,7 +51,7 @@ void main() {
       );
     });
 
-    test('rejects a changed price or shop', () {
+    test('uses the live price and rejects a different shop', () {
       const repriced = ProductModel(
         id: 'apple',
         name: 'Apple',
@@ -60,14 +60,13 @@ void main() {
         stockQuantity: 3,
         shopId: 'shop-1',
       );
-      expect(
-        () => OrderService.validateCurrentProduct(
-          line,
-          repriced,
-          shopId: 'shop-1',
-        ),
-        throwsA(isA<OrderActionException>()),
+      final current = OrderService.validateCurrentProduct(
+        line,
+        repriced,
+        shopId: 'shop-1',
       );
+      expect(current.product.priceMinor, 1200);
+      expect(current.quantity * current.product.priceMinor, 2400);
       expect(
         () =>
             OrderService.validateCurrentProduct(line, apple, shopId: 'shop-2'),

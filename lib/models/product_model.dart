@@ -24,6 +24,7 @@ class ProductModel {
     this.rating,
     this.originalPriceMinor,
     this.isOrganic = false,
+    this.isActive = true,
   });
   final String id, name, currencyCode, category, unit, shopId, shopName;
   final String origin,
@@ -38,6 +39,7 @@ class ProductModel {
   final double? rating;
   final int? originalPriceMinor;
   final bool isOrganic;
+  final bool isActive;
   int get availableQuantity => stockQuantity;
   bool get onSale =>
       originalPriceMinor != null && originalPriceMinor! > priceMinor;
@@ -98,6 +100,7 @@ class ProductModel {
           ? number('originalPriceMinor').round()
           : null,
       isOrganic: data['isOrganic'] == true,
+      isActive: data['isActive'] != false,
     );
   }
 }

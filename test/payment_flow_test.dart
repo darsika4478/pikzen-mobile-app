@@ -10,6 +10,7 @@ import 'package:pikzen/core/services/payment_service.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
 import 'package:pikzen/features/payments_tracking/screens/card_payment_screen.dart';
 import 'package:pikzen/features/payments_tracking/screens/order_tracking_screen.dart';
+import 'package:pikzen/features/payments_tracking/screens/payment_failure_screen.dart';
 import 'package:pikzen/features/payments_tracking/screens/payment_selection_screen.dart';
 import 'package:pikzen/features/payments_tracking/screens/payment_result_screen.dart';
 import 'package:pikzen/models/cart_item_model.dart';
@@ -42,6 +43,7 @@ class RecordingOrders extends OrderService {
   final Completer<void>? gate;
   bool fail;
   int calls = 0;
+  DemoPaymentDetails? lastDetails;
   final saved = <String, OrderModel>{};
 
   @override
@@ -49,8 +51,10 @@ class RecordingOrders extends OrderService {
     OrderModel value, {
     required String paymentMethod,
     required String paymentStatus,
+    DemoPaymentDetails paymentDetails = const DemoPaymentDetails(),
   }) async {
     calls++;
+    lastDetails = paymentDetails;
     if (gate != null) await gate!.future;
     if (fail) throw const OrderActionException('Save failed');
     return saved.putIfAbsent(
@@ -100,6 +104,19 @@ GoRouter router(
       },
     ),
     GoRoute(
+      path: '/payment-failure',
+      name: 'payment-failure',
+      builder: (_, state) {
+        final checkout = PaymentCheckoutData.fromExtra(state.extra);
+        final args = state.extra as Map<String, Object?>;
+        return PaymentFailureScreen(
+          paymentMethod: args['paymentMethod'] as String? ?? 'card',
+          orderDraft: checkout.orderDraft,
+          message: args['errorMessage'] as String?,
+        );
+      },
+    ),
+    GoRoute(
       path: '/order-confirmation',
       name: 'order-confirmation',
       builder: (_, state) => Scaffold(body: Text('Saved order ${state.extra}')),
@@ -112,10 +129,14 @@ GoRouter router(
   ],
 );
 
-Future<void> fillCard(WidgetTester tester) async {
-  final expiry =
+Future<void> fillCard(
+  WidgetTester tester, {
+  String number = '4242424242424242',
+  String? expiry,
+}) async {
+  expiry ??=
       '12/${((DateTime.now().year + 2) % 100).toString().padLeft(2, '0')}';
-  await tester.enterText(find.byType(TextFormField).at(0), '4242424242424242');
+  await tester.enterText(find.byType(TextFormField).at(0), number);
   await tester.enterText(find.byType(TextFormField).at(1), 'Test User');
   await tester.enterText(find.byType(TextFormField).at(2), expiry);
   await tester.enterText(find.byType(TextFormField).at(3), '123');
@@ -146,7 +167,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(orders.calls, 1);
       expect(cart.count, 0);
-      expect(find.text('Payment Successful!'), findsOneWidget);
+      expect(find.text('Demo Payment Complete'), findsOneWidget);
       expect(find.text('#order-123'), findsOneWidget);
       expect(find.text('LKR 1,060.00'), findsOneWidget);
       expect(orders.saved['order-123']!.items.single.product.name, 'Apple');
@@ -157,13 +178,15 @@ void main() {
       final stored = orders.saved['order-123']!.toFirestore();
       expect(stored.containsKey('cardNumber'), isFalse);
       expect(stored.containsKey('cvv'), isFalse);
+      expect(orders.lastDetails?.cardLast4, '4242');
+      expect(orders.lastDetails?.provider, 'Demo card');
       await tester.tap(find.byKey(const Key('paymentSuccessContent')));
       await tester.pumpAndSettle();
       expect(find.text('Saved order order-123'), findsOneWidget);
     },
   );
 
-  testWidgets('failed order save keeps the cart and payment screen', (
+  testWidgets('failed order save keeps the cart and opens failure screen', (
     tester,
   ) async {
     final orders = RecordingOrders(fail: true);
@@ -181,8 +204,56 @@ void main() {
     await tester.tap(find.text('Pay LKR 1,060.00'));
     await tester.pumpAndSettle();
     expect(cart.count, 1);
-    expect(find.byType(CardPaymentScreen), findsOneWidget);
+    expect(find.byType(PaymentFailureScreen), findsOneWidget);
+    expect(find.text('Save failed'), findsOneWidget);
     expect(find.byType(PaymentResultScreen), findsNothing);
+  });
+
+  testWidgets('declined demo test card never saves an order', (tester) async {
+    final orders = RecordingOrders();
+    final cart = CartProvider()..add(product);
+    final appRouter = router(draft(), orders);
+    addTearDown(appRouter.dispose);
+    addTearDown(cart.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: cart,
+        child: MaterialApp.router(routerConfig: appRouter),
+      ),
+    );
+    await fillCard(tester, number: DemoCards.declined);
+    await tester.tap(find.text('Pay LKR 1,060.00'));
+    await tester.pumpAndSettle();
+    expect(orders.calls, 0);
+    expect(cart.count, 1);
+    expect(find.byType(PaymentFailureScreen), findsOneWidget);
+    expect(find.textContaining('declined'), findsOneWidget);
+  });
+
+  testWidgets('expired dummy card is rejected by the form', (tester) async {
+    final orders = RecordingOrders();
+    final appRouter = router(draft(), orders);
+    addTearDown(appRouter.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: appRouter));
+    await fillCard(tester, expiry: '01/20');
+    await tester.tap(find.text('Pay LKR 1,060.00'));
+    await tester.pumpAndSettle();
+    expect(orders.calls, 0);
+    expect(find.text('This card has expired'), findsOneWidget);
+  });
+
+  test('demo card helpers expose only last four digits and expiry', () {
+    expect(DemoCards.last4('4242 4242 4242 1234'), '1234');
+    expect(DemoCards.declineReason(DemoCards.approved), isNull);
+    expect(DemoCards.declineReason(DemoCards.insufficientFunds), isNotNull);
+    final now = DateTime(2026, 10, 7);
+    expect(DemoCards.isExpired('09/26', now: now), isTrue);
+    expect(DemoCards.isExpired('10/26', now: now), isFalse);
+  });
+
+  test('receipt reference is stable for an order ID', () {
+    expect(PaymentModel.referenceFor('aB3dE6gH9jK'), 'DEMO-AB3DE6GH');
+    expect(PaymentModel.referenceFor('order-123'), 'DEMO-ORDER123');
   });
 
   testWidgets('wallet order clears cart only after successful save', (
@@ -212,7 +283,7 @@ void main() {
     orders.gate!.complete();
     await tester.pumpAndSettle();
     expect(cart.count, 0);
-    expect(find.text('Payment Successful!'), findsOneWidget);
+    expect(find.text('Demo Payment Complete'), findsOneWidget);
     expect(orders.saved['order-123']!.paymentMethod, 'ewallet');
   });
 
@@ -239,7 +310,7 @@ void main() {
     await tester.tap(find.text('Pay with e-Wallet'));
     await tester.pumpAndSettle();
     expect(cart.count, 1);
-    expect(find.byType(DemoPaymentSelectionScreen), findsOneWidget);
+    expect(find.byType(PaymentFailureScreen), findsOneWidget);
     expect(find.byType(PaymentResultScreen), findsNothing);
   });
 

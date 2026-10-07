@@ -14,6 +14,7 @@ class PaymentFailureScreen extends StatelessWidget {
     this.currencyCode = 'LKR',
     this.orderId,
     this.orderDraft,
+    this.message,
   });
 
   /// A method identifier only; card data is never passed to this screen.
@@ -24,6 +25,21 @@ class PaymentFailureScreen extends StatelessWidget {
   /// Optional existing order ID. Failed attempts never create one here.
   final String? orderId;
   final OrderModel? orderDraft;
+  final String? message;
+
+  String get _visibleMessage {
+    final value = message?.trim();
+    if (value == null || value.isEmpty) {
+      return "We couldn't process your payment.";
+    }
+    if (RegExp(r'^[A-Z_]+$').hasMatch(value) ||
+        value.contains('FirebaseException') ||
+        value.contains('firebase_functions') ||
+        value.contains('cloud_firestore')) {
+      return 'Unable to place your order. Please try again.';
+    }
+    return value;
+  }
 
   PaymentMethod get _method => PaymentMethod.fromValue(paymentMethod);
 
@@ -100,7 +116,7 @@ class PaymentFailureScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          "We couldn't process your payment.",
+                          _visibleMessage,
                           textAlign: TextAlign.center,
                           style: textTheme.bodyLarge?.copyWith(
                             color: AppColors.primaryText,

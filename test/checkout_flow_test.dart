@@ -11,6 +11,7 @@ import 'package:pikzen/features/cart_checkout/screens/pickup_date_screen.dart';
 import 'package:pikzen/features/cart_checkout/screens/pickup_time_screen.dart';
 import 'package:pikzen/features/cart_checkout/screens/replacement_preference_screen.dart';
 import 'package:pikzen/models/product_model.dart';
+import 'package:pikzen/models/user_model.dart';
 
 void main() {
   testWidgets(
@@ -20,7 +21,13 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final cart = CartProvider();
       final checkout = CheckoutProvider();
-      final auth = AuthProvider(restore: false);
+      final auth = AuthProvider(restore: false)
+        ..user = const UserModel(
+          id: 'customer',
+          name: 'Customer',
+          email: 'customer@example.com',
+          role: 'customer',
+        );
       addTearDown(cart.dispose);
       addTearDown(checkout.dispose);
       addTearDown(auth.dispose);

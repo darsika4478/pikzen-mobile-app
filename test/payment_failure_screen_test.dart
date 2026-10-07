@@ -31,6 +31,17 @@ void main() {
       expect(find.text('4242 4242 4242 4242'), findsNothing);
     });
 
+    testWidgets('hides raw Firebase error codes', (tester) async {
+      final router = _router(message: 'NOT_FOUND');
+      addTearDown(router.dispose);
+      await tester.pumpWidget(_app(router));
+      expect(find.text('NOT_FOUND'), findsNothing);
+      expect(
+        find.text('Unable to place your order. Please try again.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets(
       'another method returns to selection preserving checkout data',
       (tester) async {
@@ -68,7 +79,7 @@ void main() {
 Widget _app(GoRouter router) =>
     MaterialApp.router(theme: AppTheme.lightTheme, routerConfig: router);
 
-GoRouter _router({String paymentMethod = 'card'}) => GoRouter(
+GoRouter _router({String paymentMethod = 'card', String? message}) => GoRouter(
   initialLocation: '/payment-failure',
   routes: [
     GoRoute(
@@ -79,6 +90,7 @@ GoRouter _router({String paymentMethod = 'card'}) => GoRouter(
         amountMinor: 245000,
         currencyCode: 'LKR',
         orderId: 'PZ-ORDER-1',
+        message: message,
       ),
     ),
     GoRoute(

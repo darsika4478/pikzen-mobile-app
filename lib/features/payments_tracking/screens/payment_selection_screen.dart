@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/payment_service.dart';
+import '../../../core/services/order_service.dart';
 import '../../../models/payment_model.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../cart_checkout/providers/cart_provider.dart';
@@ -68,7 +69,11 @@ class _DemoPaymentSelectionScreenState
     if (_selected == null || _submitting) return;
     setState(() => _submitting = true);
     try {
-      final order = await _payments.confirm(widget.checkout, widget.method);
+      final order = await _payments.confirm(
+        widget.checkout,
+        widget.method,
+        details: DemoPaymentDetails(provider: _selected),
+      );
       if (!mounted) return;
       if (order == null) throw StateError('Order was not saved');
       try {
@@ -80,12 +85,16 @@ class _DemoPaymentSelectionScreenState
         'payment-result',
         extra: widget.checkout.successExtra(widget.method, order),
       );
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('The order could not be saved. Please try again.'),
-          ),
+        context.goNamed(
+          'payment-failure',
+          extra: {
+            ...widget.checkout.toExtra(widget.method),
+            'errorMessage': error is OrderActionException
+                ? error.message
+                : null,
+          },
         );
       }
     } finally {

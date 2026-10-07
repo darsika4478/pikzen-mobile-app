@@ -385,6 +385,9 @@ final GoRouter appRouter = GoRouter(
           currencyCode: checkout.currency,
           orderId: checkout.id,
           orderDraft: checkout.orderDraft,
+          message: args['errorMessage'] is String
+              ? args['errorMessage'] as String
+              : null,
         );
       },
     ),

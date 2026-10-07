@@ -1,4 +1,3 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -103,9 +102,16 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
     setState(() => _submitting = true);
     late final OrderModel order;
     try {
+      // Simulated issuer response for the documented dummy test cards.
+      final declined = DemoCards.declineReason(_cardNumberController.text);
+      if (declined != null) throw OrderActionException(declined);
       final saved = await (widget.demoPayments ?? DemoPaymentService()).confirm(
         _checkout,
         PaymentMethod.card,
+        details: DemoPaymentDetails(
+          provider: 'Demo card',
+          cardLast4: DemoCards.last4(_cardNumberController.text),
+        ),
       );
       if (saved == null) {
         throw const OrderActionException('Order was not saved.');
@@ -113,9 +119,21 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
       order = saved;
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_paymentErrorMessage(error))));
+        try {
+          context.read<CheckoutProvider>().recordPaymentAttempt('failed');
+        } on ProviderNotFoundException {
+          // Standalone widget tests may omit app providers.
+        }
         setState(() => _submitting = false);
+        context.goNamed(
+          'payment-failure',
+          extra: {
+            ..._checkout.toExtra(PaymentMethod.card),
+            'errorMessage': error is OrderActionException
+                ? error.message
+                : null,
+          },
+        );
       }
       return;
     }
@@ -131,19 +149,6 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
       'payment-result',
       extra: _checkout.successExtra(PaymentMethod.card, order),
     );
-  }
-
-  static String _paymentErrorMessage(Object error) {
-    if (error is OrderActionException) return error.message;
-    if (error is FirebaseException) {
-      if (error.code == 'permission-denied') {
-        return 'Order saving was denied. Check your account and Firestore rules.';
-      }
-      if (error.code == 'unavailable') {
-        return 'Cannot reach the order service. Check your connection and retry.';
-      }
-    }
-    return 'Order saving failed. Your cart was kept. Please retry.';
   }
 
   @override
@@ -296,7 +301,9 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
-                                  'Payment details stay on this device. No charge is made.',
+                                  'Demo payment: no charge is made. Use '
+                                  '${DemoCards.approved} to approve or '
+                                  '${DemoCards.declined} to simulate a decline.',
                                   textAlign: TextAlign.center,
                                   style: textTheme.bodySmall?.copyWith(
                                     color: AppColors.secondaryText,
@@ -383,9 +390,10 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
   }
 
   static String? _validateExpiry(String? value) {
-    return RegExp(r'^(0[1-9]|1[0-2])/\d{2}$').hasMatch(value ?? '')
-        ? null
-        : 'Use MM/YY';
+    if (!RegExp(r'^(0[1-9]|1[0-2])/\d{2}$').hasMatch(value ?? '')) {
+      return 'Use MM/YY';
+    }
+    return DemoCards.isExpired(value!) ? 'This card has expired' : null;
   }
 
   static String? _validateCvv(String? value) {
