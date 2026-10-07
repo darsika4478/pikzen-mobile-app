@@ -14,6 +14,7 @@ class AvailabilityProductCard extends StatelessWidget {
       OrderItemType.apple => ('🍎', AppColors.rejectBackground),
       OrderItemType.banana => ('🍌', AppColors.bananaBackground),
       OrderItemType.milk => ('🥛', AppColors.milkBackground),
+      OrderItemType.other => ('📦', AppColors.softGreen),
     };
     return Container(
       decoration: BoxDecoration(

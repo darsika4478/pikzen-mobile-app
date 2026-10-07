@@ -227,7 +227,8 @@ void main() {
   testWidgets(
     'All categories route to filtered search; selected details use shared cart',
     (tester) async {
-      final auth = AuthProvider(service: FakeAuthService(), restore: false);
+      final auth = AuthProvider(service: FakeAuthService(), restore: false)
+        ..user = customer;
       final products = ProductProvider();
       final cart = CartProvider();
       addTearDown(auth.dispose);
@@ -320,7 +321,10 @@ void main() {
       auth.user = user;
       appRouter.go('/admin/users');
       await tester.pumpAndSettle();
-      expect(appRouter.routeInformationProvider.value.uri.path, '/login');
+      expect(
+        appRouter.routeInformationProvider.value.uri.path,
+        user.role == 'customer' ? '/customer-home' : '/shop-pending',
+      );
     }
     expect(await auth.signIn('admin@example.com', 'Password123'), isTrue);
     expect(auth.destination, 'admin-users');

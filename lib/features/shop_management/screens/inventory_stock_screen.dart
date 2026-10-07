@@ -2,22 +2,49 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../models/product_model.dart';
 import '../models/mock_inventory_item.dart';
 import '../widgets/dashboard_bottom_nav.dart';
 import '../widgets/inventory_product_card.dart';
 
 class InventoryStockScreen extends StatefulWidget {
-  const InventoryStockScreen({super.key});
+  const InventoryStockScreen({super.key, this.service});
+  final FirestoreService? service;
   @override
   State<InventoryStockScreen> createState() => _InventoryStockScreenState();
 }
 
 class _InventoryStockScreenState extends State<InventoryStockScreen> {
-  final _items = createMockInventory();
-  final _selected = <MockInventoryItem>{};
+  late final FirestoreService _service = widget.service ?? FirestoreService();
+  late final Stream<List<ProductModel>> _source = _service.shopProducts();
+  final _selected = <String>{};
+  final _pending = <String, int>{};
+  bool _saving = false;
   String _search = '';
   int _filter = 0;
   bool _batch = false;
+  Future<void> _save() async {
+    if (_saving || _pending.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await _service.updateShopStocks(Map.of(_pending));
+      if (!mounted) return;
+      setState(() => _pending.clear());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stock updated successfully')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Stock could not be updated: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   void _back() {
     FocusScope.of(context).unfocus();
     if (context.canPop()) {
@@ -61,275 +88,297 @@ class _InventoryStockScreenState extends State<InventoryStockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final visible = _items
-        .where(
-          (item) =>
-              item.product.name.toLowerCase().contains(
-                _search.trim().toLowerCase(),
-              ) &&
-              (_filter == 0 ||
-                  (_filter == 1 ? item.isLow : item.quantity == 0)),
-        )
-        .toList();
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 58,
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: _back,
-                        tooltip: 'Back',
-                        icon: const Icon(Icons.chevron_left_rounded),
-                      ),
-                      const Expanded(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.circle,
-                                size: 6,
-                                color: AppColors.primary,
+    return StreamBuilder<List<ProductModel>>(
+      stream: _source,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Scaffold(
+            body: Center(
+              child: Text(
+                'Unable to load inventory. Check your connection or approval.',
+              ),
+            ),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final items = snapshot.data!.map((product) {
+          final item = MockInventoryItem.fromProduct(product);
+          item.quantity = _pending[product.id] ?? product.stockQuantity;
+          return item;
+        }).toList();
+        final visible = items
+            .where(
+              (item) =>
+                  item.product.name.toLowerCase().contains(
+                    _search.trim().toLowerCase(),
+                  ) &&
+                  (_filter == 0 ||
+                      (_filter == 1 ? item.isLow : item.quantity == 0)),
+            )
+            .toList();
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: SafeArea(
+            bottom: false,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 58,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: _back,
+                            tooltip: 'Back',
+                            icon: const Icon(Icons.chevron_left_rounded),
+                          ),
+                          const Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 6,
+                                    color: AppColors.primary,
+                                  ),
+                                  SizedBox(width: 7),
+                                  Text(
+                                    'Inventory & Stock',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              SizedBox(width: 7),
-                              Text(
-                                'Inventory & Stock',
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _filters,
-                        tooltip: 'Inventory settings',
-                        icon: const Icon(Icons.tune_rounded, size: 21),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    height: 42,
-                    child: TextField(
-                      onChanged: (v) => setState(() => _search = v),
-                      style: const TextStyle(fontSize: 12),
-                      decoration: InputDecoration(
-                        hintText: 'Search inventory...',
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 10,
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          size: 19,
-                          color: AppColors.secondaryText,
-                        ),
-                        suffixIcon: IconButton(
-                          onPressed: _filters,
-                          tooltip: 'Filter inventory',
-                          icon: const Icon(
-                            Icons.filter_alt_rounded,
-                            size: 18,
-                            color: AppColors.secondaryText,
-                          ),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(11),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(11),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Row(
-                    children: [
-                      for (var i = 0; i < 3; i++) ...[
-                        if (i > 0) const SizedBox(width: 6),
-                        Expanded(child: _chip(i)),
-                      ],
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 3, 9, 0),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'QUICK UPDATE (VARIANT B)',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.secondaryText,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() {
-                          _batch = !_batch;
-                          if (!_batch) {
-                            _selected.clear();
-                          }
-                        }),
-                        child: Text(
-                          _batch ? 'Done' : 'Batch Select',
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: visible.isEmpty
-                      ? Center(
-                          child: Text(
-                            _filter == 2 && _search.trim().isEmpty
-                                ? 'No out-of-stock products'
-                                : 'No inventory items found',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.secondaryText,
                             ),
                           ),
-                        )
-                      : ListView.separated(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          itemCount: visible.length,
-                          separatorBuilder: (_, index) =>
-                              const SizedBox(height: 8),
-                          itemBuilder: (_, index) {
-                            final item = visible[index];
-                            return InventoryProductCard(
-                              key: ValueKey(item.product.visualType),
-                              item: item,
-                              selectionMode: _batch,
-                              selected: _selected.contains(item),
-                              onSelected: (v) => setState(() {
-                                if (v) {
-                                  _selected.add(item);
-                                } else {
-                                  _selected.remove(item);
-                                }
-                              }),
-                              onAdjust: (delta) => setState(
-                                () => item.quantity = (item.quantity + delta)
-                                    .clamp(0, 999999),
-                              ),
-                              onMenu: (action) {
-                                FocusScope.of(context).unfocus();
-                                if (action == 'edit') {
-                                  context.pushNamed(
-                                    'add-edit-product',
-                                    queryParameters: {
-                                      'product': item.product.visualType.name,
-                                    },
-                                  );
-                                } else {
-                                  showDialog<void>(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: Text(item.product.name),
-                                      content: Text(
-                                        '${item.product.price} / ${item.unit}\n${item.status}\n${item.quantity} units left',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(dialogContext),
-                                          child: const Text('Close'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        FocusScope.of(context).unfocus();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Stock updated successfully'),
+                          IconButton(
+                            onPressed: _filters,
+                            tooltip: 'Inventory settings',
+                            icon: const Icon(Icons.tune_rounded, size: 21),
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.check_rounded, size: 19),
-                      label: const Text(
-                        'Update Stock',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        elevation: 0,
+                        ],
                       ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        height: 42,
+                        child: TextField(
+                          onChanged: (v) => setState(() => _search = v),
+                          style: const TextStyle(fontSize: 12),
+                          decoration: InputDecoration(
+                            hintText: 'Search inventory...',
+                            filled: true,
+                            fillColor: AppColors.surface,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              size: 19,
+                              color: AppColors.secondaryText,
+                            ),
+                            suffixIcon: IconButton(
+                              onPressed: _filters,
+                              tooltip: 'Filter inventory',
+                              icon: const Icon(
+                                Icons.filter_alt_rounded,
+                                size: 18,
+                                color: AppColors.secondaryText,
+                              ),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(11),
+                              borderSide: const BorderSide(
+                                color: AppColors.border,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(11),
+                              borderSide: const BorderSide(
+                                color: AppColors.border,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: Row(
+                        children: [
+                          for (var i = 0; i < 3; i++) ...[
+                            if (i > 0) const SizedBox(width: 6),
+                            Expanded(child: _chip(i, items.length)),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 3, 9, 0),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'QUICK UPDATE (VARIANT B)',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.secondaryText,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _batch = !_batch;
+                              if (!_batch) {
+                                _selected.clear();
+                              }
+                            }),
+                            child: Text(
+                              _batch ? 'Done' : 'Batch Select',
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: visible.isEmpty
+                          ? Center(
+                              child: Text(
+                                _filter == 2 && _search.trim().isEmpty
+                                    ? 'No out-of-stock products'
+                                    : 'No inventory items found',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.secondaryText,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                              itemCount: visible.length,
+                              separatorBuilder: (_, index) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (_, index) {
+                                final item = visible[index];
+                                return InventoryProductCard(
+                                  key: ValueKey(item.id),
+                                  item: item,
+                                  selectionMode: _batch,
+                                  selected: _selected.contains(item.id),
+                                  onSelected: (v) => setState(() {
+                                    if (v) {
+                                      _selected.add(item.id);
+                                    } else {
+                                      _selected.remove(item.id);
+                                    }
+                                  }),
+                                  onAdjust: (delta) => setState(
+                                    () => _pending[item.id] =
+                                        (item.quantity + delta).clamp(
+                                          0,
+                                          999999,
+                                        ),
+                                  ),
+                                  onMenu: (action) {
+                                    FocusScope.of(context).unfocus();
+                                    if (action == 'edit') {
+                                      context.pushNamed(
+                                        'add-edit-product',
+                                        queryParameters: {'productId': item.id},
+                                      );
+                                    } else {
+                                      showDialog<void>(
+                                        context: context,
+                                        builder: (dialogContext) => AlertDialog(
+                                          title: Text(item.product.name),
+                                          content: Text(
+                                            '${item.product.price} / ${item.unit}\n${item.status}\n${item.quantity} units left',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(dialogContext),
+                                              child: const Text('Close'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: _saving || _pending.isEmpty ? null : _save,
+                          icon: const Icon(Icons.check_rounded, size: 19),
+                          label: Text(
+                            _saving ? 'Updating...' : 'Update Stock',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.surface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
-      bottomNavigationBar: DashboardBottomNav(
-        selectedIndex: 2,
-        onSelected: (index) {
-          FocusScope.of(context).unfocus();
-          switch (index) {
-            case 0:
-              context.goNamed('shop-dashboard');
-            case 1:
-              context.pushNamed('incoming-orders');
-            case 2:
-              _back();
-            case 3:
-              context.pushNamed('shop-profile');
-          }
-        },
-      ),
+          bottomNavigationBar: DashboardBottomNav(
+            selectedIndex: 2,
+            onSelected: (index) {
+              FocusScope.of(context).unfocus();
+              switch (index) {
+                case 0:
+                  context.goNamed('shop-dashboard');
+                case 1:
+                  context.pushNamed('incoming-orders');
+                case 2:
+                  _back();
+                case 3:
+                  context.pushNamed('shop-profile');
+              }
+            },
+          ),
+        );
+      },
     );
   }
 
-  Widget _chip(int index) {
+  Widget _chip(int index, int total) {
     final active = _filter == index;
     final color = index == 0
         ? AppColors.primary
@@ -387,7 +436,7 @@ class _InventoryStockScreenState extends State<InventoryStockScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    '24',
+                    '$total',
                     style: TextStyle(
                       fontSize: 9,
                       color: active ? AppColors.surface : AppColors.primary,

@@ -1,6 +1,8 @@
 import 'mock_order_details.dart';
+import '../../../models/product_model.dart';
+import '../../../models/payment_model.dart';
 
-/// Local display data only; availability is fixed for the UI preview.
+/// Display adapter for live order items and current product stock.
 class AvailabilityItem {
   const AvailabilityItem({
     required this.name,
@@ -15,16 +17,17 @@ class AvailabilityItem {
   final bool isAvailable;
   final OrderItemType visualType;
 
-  factory AvailabilityItem.fromOrderItem(MockOrderItem item) =>
-      AvailabilityItem(
-        name: item.name,
-        quantity: item.quantity,
-        price: switch (item.type) {
-          OrderItemType.apple => 'Rs 5.90',
-          OrderItemType.banana => 'Rs 2.50',
-          OrderItemType.milk => 'Rs 6.90',
-        },
-        isAvailable: item.type != OrderItemType.milk,
-        visualType: item.type,
-      );
+  factory AvailabilityItem.fromOrderItem(
+    MockOrderItem item, {
+    ProductModel? current,
+  }) => AvailabilityItem(
+    name: item.name,
+    quantity: item.quantity,
+    price: formatPaymentAmount(item.unitPriceMinor, 'LKR'),
+    isAvailable:
+        current != null &&
+        current.isActive &&
+        current.stockQuantity >= item.quantity,
+    visualType: item.type,
+  );
 }

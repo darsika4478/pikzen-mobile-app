@@ -7,9 +7,11 @@ class OrderTypeTabs extends StatelessWidget {
     super.key,
     required this.scheduled,
     required this.onChanged,
+    this.newCount = 12,
   });
   final bool scheduled;
   final ValueChanged<bool> onChanged;
+  final int newCount;
   @override
   Widget build(BuildContext context) => Material(
     color: AppColors.border,
@@ -75,7 +77,7 @@ class OrderTypeTabs extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '12',
+                    '$newCount',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,

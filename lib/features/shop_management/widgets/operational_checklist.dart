@@ -5,14 +5,20 @@ import 'checklist_item.dart';
 import 'dashboard_surface.dart';
 
 class OperationalChecklist extends StatelessWidget {
-  const OperationalChecklist({super.key});
+  const OperationalChecklist({
+    super.key,
+    required this.newOrders,
+    required this.lowStock,
+  });
+  final int newOrders;
+  final int lowStock;
   @override
-  Widget build(BuildContext context) => const DashboardSurface(
+  Widget build(BuildContext context) => DashboardSurface(
     child: Column(
       children: [
         Row(
           children: [
-            Expanded(
+            const Expanded(
               child: Text(
                 'OPERATIONAL CHECKLIST',
                 style: TextStyle(
@@ -23,10 +29,10 @@ class OperationalChecklist extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(width: 4),
+            const SizedBox(width: 4),
             Text(
-              '1 of 3 Done',
-              style: TextStyle(
+              '${(newOrders == 0 ? 1 : 0) + (lowStock == 0 ? 1 : 0)} of 2 Done',
+              style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
                 color: AppColors.primary,
@@ -34,25 +40,21 @@ class OperationalChecklist extends StatelessWidget {
             ),
           ],
         ),
-        SizedBox(height: 14),
+        const SizedBox(height: 14),
         ChecklistItem(
           title: 'Check incoming orders',
-          status: '10:00 AM',
+          status: newOrders == 0 ? 'Up to date' : '$newOrders pending',
           icon: Icons.check_rounded,
-          completed: true,
+          completed: newOrders == 0,
+          needsAction: newOrders > 0,
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         ChecklistItem(
           title: 'Update low stock items',
-          status: 'Action needed',
+          status: lowStock == 0 ? 'Up to date' : '$lowStock low',
           icon: Icons.inventory_2_outlined,
-          needsAction: true,
-        ),
-        SizedBox(height: 8),
-        ChecklistItem(
-          title: 'Respond to 2 customer queries',
-          status: 'Pending',
-          icon: Icons.chat_bubble_outline_rounded,
+          completed: lowStock == 0,
+          needsAction: lowStock > 0,
         ),
       ],
     ),

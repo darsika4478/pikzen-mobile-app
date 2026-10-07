@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/services/order_service.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../shop_management/widgets/dashboard_bottom_nav.dart';
-import 'logout_confirmation_dialog.dart';
 
-/// Presentation for ProfileScreen's local shop partner mode.
 class MerchantProfileView extends StatelessWidget {
-  const MerchantProfileView({super.key});
+  const MerchantProfileView({super.key, this.products, this.orders});
+  final FirestoreService? products;
+  final OrderService? orders;
 
   void _message(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
@@ -18,183 +22,222 @@ class MerchantProfileView extends StatelessWidget {
   Future<void> _logout(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.35),
-      builder: (dialogContext) => const LogoutConfirmationDialog(),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Logout?'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.rejectRed),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
     );
     if (confirmed == true && context.mounted) {
-      _message(context, 'Logout selected');
+      try {
+        await context.read<AuthProvider>().signOut();
+        if (context.mounted) context.goNamed('login');
+      } catch (_) {
+        if (context.mounted) {
+          _message(context, 'Could not log out. Please try again.');
+        }
+      }
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: AppColors.background,
-    body: SafeArea(
-      bottom: false,
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                child: Row(
-                  children: [
-                    _headerButton(Icons.chevron_left_rounded, 'Back', () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.goNamed('shop-dashboard');
-                      }
-                    }),
-                    const Expanded(
-                      child: Text(
-                        'Profile',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final productService = products ?? FirestoreService();
+    final orderService = orders ?? OrderService();
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        bottom: false,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: Row(
+                    children: [
+                      _headerButton(Icons.chevron_left_rounded, 'Back', () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.goNamed('shop-dashboard');
+                        }
+                      }),
+                      const Expanded(
+                        child: Text(
+                          'Profile',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    _headerButton(
-                      Icons.settings_outlined,
-                      'Profile settings',
-                      () => _message(context, 'Settings'),
-                    ),
-                  ],
+                      _headerButton(
+                        Icons.settings_outlined,
+                        'Profile settings',
+                        () => _message(context, 'Settings'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) => SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 20),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: (constraints.maxHeight - 22).clamp(
-                          0,
-                          double.infinity,
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 2, 16, 20),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: (constraints.maxHeight - 22).clamp(
+                            0,
+                            double.infinity,
+                          ),
                         ),
-                      ),
-                      child: IntrinsicHeight(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            MerchantIdentitySection(
-                              onEdit: () =>
-                                  context.pushNamed('shop-edit-profile'),
-                            ),
-                            const SizedBox(height: 24),
-                            ProfileMenuCard(
-                              children: [
-                                MerchantProfileMenuRow(
-                                  icon: Icons.shopping_bag_outlined,
-                                  label: 'My Orders',
-                                  color: AppColors.primary,
-                                  tint: AppColors.softGreen,
-                                  trailing: const _ProfilePill('12 New'),
-                                  onTap: () =>
-                                      context.pushNamed('incoming-orders'),
-                                ),
-                                MerchantProfileMenuRow(
-                                  icon: Icons.inventory_2_outlined,
-                                  label: 'My Products',
-                                  color: AppColors.primary,
-                                  tint: AppColors.softGreen,
-                                  trailing: const Text(
-                                    '28 Items',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.secondaryText,
+                        child: IntrinsicHeight(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              MerchantIdentitySection(
+                                profile: productService.approvedShopProfile(),
+                                onEdit: () =>
+                                    context.pushNamed('shop-edit-profile'),
+                              ),
+                              const SizedBox(height: 24),
+                              ProfileMenuCard(
+                                children: [
+                                  MerchantProfileMenuRow(
+                                    icon: Icons.shopping_bag_outlined,
+                                    label: 'My Orders',
+                                    color: AppColors.primary,
+                                    tint: AppColors.softGreen,
+                                    trailing: StreamBuilder(
+                                      stream: orderService.forShop(),
+                                      builder: (context, snapshot) => _ProfilePill(
+                                        snapshot.hasError ? 'Unavailable' : snapshot.hasData
+                                            ? '${snapshot.data!.where((order) => order.status == 'placed').length} New'
+                                            : 'Loading',
+                                      ),
+                                    ),
+                                    onTap: () =>
+                                        context.pushNamed('incoming-orders'),
+                                  ),
+                                  MerchantProfileMenuRow(
+                                    icon: Icons.inventory_2_outlined,
+                                    label: 'My Products',
+                                    color: AppColors.primary,
+                                    tint: AppColors.softGreen,
+                                    trailing: StreamBuilder(
+                                      stream: productService.shopProducts(),
+                                      builder: (context, snapshot) => Text(
+                                        snapshot.hasError ? 'Unavailable' : snapshot.hasData
+                                            ? '${snapshot.data!.where((product) => product.isActive).length} Items'
+                                            : 'Loading',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: AppColors.secondaryText,
+                                        ),
+                                      ),
+                                    ),
+                                    onTap: () =>
+                                        context.pushNamed('product-management'),
+                                  ),
+                                  MerchantProfileMenuRow(
+                                    icon: Icons.lock_outline_rounded,
+                                    label: 'Change Password',
+                                    onTap: () => _message(
+                                      context,
+                                      'Change Password is unavailable for shop accounts.',
                                     ),
                                   ),
-                                  onTap: () =>
-                                      context.pushNamed('product-management'),
-                                ),
-                                MerchantProfileMenuRow(
-                                  icon: Icons.lock_outline_rounded,
-                                  label: 'Change Password',
-                                  onTap: () =>
-                                      _message(context, 'Change Password'),
-                                ),
-                                MerchantProfileMenuRow(
-                                  icon: Icons.notifications_none_rounded,
-                                  label: 'Notifications',
-                                  color: AppColors.warning,
-                                  tint: AppColors.lightOrange,
-                                  trailing: const Icon(
-                                    Icons.circle,
-                                    size: 6,
+                                  MerchantProfileMenuRow(
+                                    icon: Icons.notifications_none_rounded,
+                                    label: 'Notifications',
                                     color: AppColors.warning,
+                                    tint: AppColors.lightOrange,
+                                    onTap: () => _message(
+                                      context,
+                                      'Shop notifications are not available yet.',
+                                    ),
                                   ),
-                                  onTap: () =>
-                                      _message(context, 'Notifications'),
-                                ),
-                                MerchantProfileMenuRow(
-                                  icon: Icons.tune_rounded,
-                                  label: 'Settings',
-                                  onTap: () => _message(context, 'Settings'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 40),
-                            const Spacer(),
-                            SizedBox(
-                              height: 46,
-                              child: OutlinedButton.icon(
-                                onPressed: () => _logout(context),
-                                icon: const Icon(
-                                  Icons.logout_rounded,
-                                  size: 18,
-                                ),
-                                label: const Text(
-                                  'Logout',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                                  MerchantProfileMenuRow(
+                                    icon: Icons.tune_rounded,
+                                    label: 'Settings',
+                                    onTap: () => _message(
+                                      context,
+                                      'Shop settings are not available yet.',
+                                    ),
                                   ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  backgroundColor: AppColors.rejectBackground,
-                                  foregroundColor: AppColors.rejectRed,
-                                  side: const BorderSide(
-                                    color: AppColors.rejectBorder,
+                                ],
+                              ),
+                              const SizedBox(height: 40),
+                              const Spacer(),
+                              SizedBox(
+                                height: 46,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _logout(context),
+                                  icon: const Icon(
+                                    Icons.logout_rounded,
+                                    size: 18,
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                                  label: const Text(
+                                    'Logout',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: AppColors.rejectBackground,
+                                    foregroundColor: AppColors.rejectRed,
+                                    side: const BorderSide(
+                                      color: AppColors.rejectBorder,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-    bottomNavigationBar: DashboardBottomNav(
-      selectedIndex: 3,
-      onSelected: (index) {
-        switch (index) {
-          case 0:
-            context.goNamed('shop-dashboard');
-          case 1:
-            context.pushNamed('incoming-orders');
-          case 2:
-            context.pushNamed('product-management');
-          case 3:
-            break;
-        }
-      },
-    ),
-  );
+      bottomNavigationBar: DashboardBottomNav(
+        selectedIndex: 3,
+        onSelected: (index) {
+          switch (index) {
+            case 0:
+              context.goNamed('shop-dashboard');
+            case 1:
+              context.pushNamed('incoming-orders');
+            case 2:
+              context.pushNamed('product-management');
+            case 3:
+              break;
+          }
+        },
+      ),
+    );
+  }
 
   Widget _headerButton(IconData icon, String tooltip, VoidCallback onTap) =>
       Container(
@@ -225,69 +268,84 @@ class MerchantProfileView extends StatelessWidget {
 }
 
 class MerchantIdentitySection extends StatelessWidget {
-  const MerchantIdentitySection({super.key, required this.onEdit});
+  const MerchantIdentitySection({
+    super.key,
+    required this.onEdit,
+    required this.profile,
+  });
   final VoidCallback onEdit;
+  final Stream<Map<String, dynamic>> profile;
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      SizedBox(
-        width: 82,
-        height: 82,
-        child: Stack(
-          children: [
-            Container(
-              width: 78,
-              height: 78,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.primary, width: 1.7),
-              ),
-              child: const Icon(
-                Icons.storefront_rounded,
-                color: AppColors.primary,
-                size: 40,
-              ),
-            ),
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary,
-                  border: Border.all(color: AppColors.surface, width: 2),
-                ),
-                child: IconButton(
-                  tooltip: 'Edit merchant profile',
-                  onPressed: onEdit,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  style: IconButton.styleFrom(
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const Icon(
-                    Icons.edit_outlined,
-                    size: 13,
+  Widget build(BuildContext context) => StreamBuilder<Map<String, dynamic>>(
+    stream: profile,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) return const Text('Shop profile is unavailable.');
+      final data = snapshot.data;
+      final name = (data?['shopName'] ?? data?['fullName'] ?? 'Shop Partner')
+          .toString();
+      final uid = (data?['uid'] ?? '').toString();
+      return Column(
+        children: [
+          SizedBox(
+            width: 82,
+            height: 82,
+            child: Stack(
+              children: [
+                Container(
+                  width: 78,
+                  height: 78,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     color: AppColors.surface,
+                    border: Border.all(color: AppColors.primary, width: 1.7),
+                  ),
+                  child: const Icon(
+                    Icons.storefront_rounded,
+                    color: AppColors.primary,
+                    size: 40,
                   ),
                 ),
-              ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primary,
+                      border: Border.all(color: AppColors.surface, width: 2),
+                    ),
+                    child: IconButton(
+                      tooltip: 'Edit merchant profile',
+                      onPressed: onEdit,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      style: IconButton.styleFrom(
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        size: 13,
+                        color: AppColors.surface,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 8),
-      const Text(
-        'GreenMart',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-      ),
-      const SizedBox(height: 5),
-      const _ProfilePill('Verified Merchant • ID: #GM8821', dot: true),
-    ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            name,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 5),
+          _ProfilePill('Approved Shop • ID: $uid', dot: true),
+        ],
+      );
+    },
   );
 }
 

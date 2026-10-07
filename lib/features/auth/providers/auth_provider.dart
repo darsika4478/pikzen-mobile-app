@@ -9,9 +9,17 @@ import '../../../models/user_model.dart';
 class AuthProvider extends ChangeNotifier {
   AuthProvider({AuthService? service, bool restore = true})
     : _service = service ?? AuthService() {
-    if (restore && Firebase.apps.isNotEmpty) unawaited(_restore());
+    if (restore && Firebase.apps.isNotEmpty) {
+      restoring = true;
+      unawaited(_restore());
+    } else {
+      _ready.complete();
+    }
   }
   final AuthService _service;
+  final Completer<void> _ready = Completer<void>();
+  Future<void> get ready => _ready.future;
+  bool restoring = false;
   StreamSubscription<Object?>? _session;
   bool _disposed = false;
   bool busy = false;
@@ -66,8 +74,11 @@ class AuthProvider extends ChangeNotifier {
       });
     } catch (_) {
       /* Keep login available if restoring the profile fails. */
+    } finally {
+      restoring = false;
+      _ready.complete();
+      _notify();
     }
-    _notify();
   }
 
   void setRemember(bool value) {

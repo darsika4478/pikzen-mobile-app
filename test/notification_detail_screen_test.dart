@@ -252,8 +252,9 @@ GoRouter _router(
     GoRoute(
       path: '/product-details',
       name: 'product-details',
-      builder: (context, state) =>
-          Scaffold(body: Text('Product Details for ${state.extra}')),
+      builder: (context, state) => Scaffold(
+        body: Text('Product Details for ${state.uri.queryParameters['id']}'),
+      ),
     ),
   ],
 );

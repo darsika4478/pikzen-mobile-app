@@ -1,16 +1,22 @@
 import 'mock_incoming_order.dart';
+import '../../../models/order_model.dart';
+import '../../../models/payment_model.dart';
 
-enum OrderItemType { apple, banana, milk }
+enum OrderItemType { apple, banana, milk, other }
 
 class MockOrderItem {
   const MockOrderItem({
     required this.name,
     required this.quantity,
     required this.type,
+    this.productId = '',
+    this.unitPriceMinor = 0,
   });
   final String name;
   final int quantity;
   final OrderItemType type;
+  final String productId;
+  final int unitPriceMinor;
 }
 
 class MockOrderDetails {
@@ -25,6 +31,11 @@ class MockOrderDetails {
     this.status = 'NEW',
     this.orderType = 'Pickup Request',
     this.pickupType = 'Store Pickup',
+    this.customerId = '',
+    this.paymentStatus = '',
+    this.replacementPreference = '',
+    this.acceptedAtLabel = '',
+    this.customerPhone = '',
   });
   final String orderId;
   final String customerName;
@@ -36,6 +47,66 @@ class MockOrderDetails {
   final String preparationDeadline;
   final String total;
   final List<MockOrderItem> items;
+  final String customerId;
+  final String paymentStatus;
+  final String replacementPreference;
+  final String acceptedAtLabel;
+  final String customerPhone;
+
+  factory MockOrderDetails.fromOrder(OrderModel order) {
+    final incoming = MockIncomingOrder.fromOrder(order);
+    return MockOrderDetails(
+      orderId: incoming.orderId,
+      customerName: incoming.customerName,
+      customerId: order.userId,
+      customerPhone: order.customerPhone ?? '',
+      initials: _initials(order.customerName),
+      dateTime: incoming.dateTime,
+      preparationDeadline: order.pickupAt == null
+          ? 'Pickup time pending'
+          : formatShopDateTime(
+              order.pickupAt!.subtract(const Duration(minutes: 10)),
+            ),
+      total: formatPaymentAmount(
+        order.effectiveTotalMinor,
+        order.effectiveCurrencyCode,
+      ),
+      status: (order.status ?? 'placed').toUpperCase(),
+      paymentStatus: order.paymentStatus ?? 'unknown',
+      replacementPreference: order.replacementPreference ?? 'Not selected',
+      acceptedAtLabel: order.acceptedAt == null
+          ? 'Awaiting acceptance'
+          : formatShopDateTime(order.acceptedAt!),
+      items: order.items.map((item) {
+        final name = item.product.name;
+        final lower = name.toLowerCase();
+        return MockOrderItem(
+          name: name,
+          quantity: item.quantity,
+          productId: item.product.id,
+          unitPriceMinor: item.product.priceMinor,
+          type: lower.contains('banana')
+              ? OrderItemType.banana
+              : lower.contains('milk')
+              ? OrderItemType.milk
+              : lower.contains('apple')
+              ? OrderItemType.apple
+              : OrderItemType.other,
+        );
+      }).toList(),
+    );
+  }
+
+  static String _initials(String? name) {
+    final initials = (name ?? '')
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part[0])
+        .join()
+        .toUpperCase();
+    return initials.isEmpty ? 'C' : initials;
+  }
 
   factory MockOrderDetails.fromIncoming(MockIncomingOrder order) {
     final second = order.orderId == '#P2002';

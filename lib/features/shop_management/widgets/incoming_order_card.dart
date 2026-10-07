@@ -79,6 +79,14 @@ class IncomingOrderCard extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              const SizedBox(height: 3),
+              Text(
+                '${order.itemCount} items',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.secondaryText,
+                ),
+              ),
               const SizedBox(height: 6),
               Row(
                 children: [

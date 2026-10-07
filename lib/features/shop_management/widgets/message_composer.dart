@@ -10,8 +10,8 @@ class MessageComposer extends StatelessWidget {
     required this.onAttach,
   });
   final TextEditingController controller;
-  final VoidCallback onSend;
-  final VoidCallback onAttach;
+  final VoidCallback? onSend;
+  final VoidCallback? onAttach;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -24,12 +24,15 @@ class MessageComposer extends StatelessWidget {
         Expanded(
           child: TextField(
             controller: controller,
+            readOnly: onSend == null,
             minLines: 1,
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,
             style: const TextStyle(fontSize: 12),
             decoration: InputDecoration(
-              hintText: 'Type a message...',
+              hintText: onSend == null
+                  ? 'Messaging unavailable'
+                  : 'Type a message...',
               hintStyle: const TextStyle(
                 fontSize: 12,
                 color: AppColors.secondaryText,

@@ -1,5 +1,5 @@
-// Prototype Spark-plan rules for the users, products, orders,
-// payments and notifications collections. Payments are simulated
+// Prototype Spark-plan rules for the users (+favourites), products, orders
+// (+messages), payments and notifications collections. Payments are simulated
 // demo receipts only. Client transactions reserve and restore stock;
 // they are suitable for the coursework demo, not a trusted payment backend.
 // Assumed data: users/{uid} has role and optional approvalStatus;
@@ -352,9 +352,18 @@ service cloud.firestore {
         && (request.resource.data.phone == null || request.resource.data.phone is string)
         && request.resource.data.createdAt == request.time;
       allow update: if (owner()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'phone', 'preferences'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fullName', 'phone', 'preferences', 'shopName', 'storeAddress'
+        ])
         && request.resource.data.fullName is string
         && (request.resource.data.phone == null || request.resource.data.phone is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['shopName', 'storeAddress'])
+          || (resource.data.role == 'shop'
+            && resource.data.approvalStatus == 'approved'
+            && request.resource.data.get('shopName', '') is string
+            && request.resource.data.get('storeAddress', '') is string
+            && request.resource.data.get('shopName', '').size() <= 120
+            && request.resource.data.get('storeAddress', '').size() <= 500))
         && validCustomerPreferenceUpdate())
         || (admin()
           && resource.data.role == 'shop'
@@ -363,6 +372,14 @@ service cloud.firestore {
           && request.resource.data.approvalStatus in ['approved', 'rejected']);
       allow delete: if false;
 
+      // Saved products; one document per product ID, private to the owner.
+      match /favourites/{productId} {
+        allow get, list, delete: if owner();
+        allow create, update: if owner()
+          && request.resource.data.keys().hasOnly(['productId', 'createdAt'])
+          && request.resource.data.productId == productId
+          && request.resource.data.createdAt == request.time;
+      }
     }
 
     match /orders/{orderId} {
@@ -374,6 +391,30 @@ service cloud.firestore {
         || customerCanRecordView() || shopCanAdvanceOrder();
       allow delete: if false;
 
+      // Order chat between its customer and its shop. Messages are immutable.
+      match /messages/{messageId} {
+        function chatOrder() {
+          return get(/databases/$(database)/documents/orders/$(orderId)).data;
+        }
+        function orderParty() {
+          return signedIn() && (chatOrder().customerId == request.auth.uid
+            || chatOrder().shopId == request.auth.uid);
+        }
+        allow get, list: if orderParty();
+        allow create: if orderParty()
+          && request.resource.data.keys().hasOnly([
+            'id', 'senderId', 'senderRole', 'text', 'createdAt'
+          ])
+          && request.resource.data.id == messageId
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderRole
+            == (chatOrder().shopId == request.auth.uid ? 'shop' : 'customer')
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
     }
 
     // Simulated payment receipts. Nothing here touches a real payment provider;
@@ -466,7 +507,21 @@ service cloud.firestore {
             || (notification.type == 'ORDER_REJECTED'
                 && notificationId == notification.orderId + '_ORDER_REJECTED'
                 && orderAfter.status == 'cancelled'
-                && orderAfter.cancellationReason == 'shopRejected'));
+                && orderAfter.cancellationReason == 'shopRejected')
+            || shopMessageEvent(notification));
+      }
+
+      // A shop chat message notifies the customer once; the notification ID
+      // is the new message's ID, and both are written in the same batch.
+      function shopMessageEvent(notification) {
+        let messagePath = /databases/$(database)/documents/orders/$(notification.orderId)/messages/$(notificationId);
+        let message = getAfter(messagePath).data;
+        return notification.type == 'SHOP_MESSAGE'
+          && !exists(messagePath)
+          && message.senderId == request.auth.uid
+          && message.senderRole == 'shop'
+          && notification.message is string
+          && notification.message.size() <= 1100;
       }
 
       // Shops check inside their status transaction whether an order event

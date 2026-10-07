@@ -2,21 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/order_service.dart';
+import '../../../models/order_model.dart';
 import '../models/mock_incoming_order.dart';
 import '../widgets/incoming_order_card.dart';
 import '../widgets/incoming_orders_header.dart';
 import '../widgets/order_type_tabs.dart';
-import '../widgets/dashboard_bottom_nav.dart';
 
-/// UI-only orders preview; no actions change or process orders.
 class IncomingOrdersScreen extends StatefulWidget {
-  const IncomingOrdersScreen({super.key});
+  const IncomingOrdersScreen({super.key, this.orderService});
+  final OrderService? orderService;
   @override
   State<IncomingOrdersScreen> createState() => _IncomingOrdersScreenState();
 }
 
 class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
   bool _scheduled = false;
+  String? _busyOrderId;
+  late final OrderService _orders = widget.orderService ?? OrderService();
+  late final Stream<List<OrderModel>> _source = _orders.forShop();
+
+  Future<void> _reject(OrderModel order) async {
+    if (_busyOrderId != null) return;
+    setState(() => _busyOrderId = order.id);
+    try {
+      await _orders.rejectShopOrder(order.id);
+      if (mounted) _message('Order rejected');
+    } on OrderActionException catch (error) {
+      if (mounted) _message(error.message);
+    } catch (_) {
+      if (mounted) _message('Unable to reject this order. Please try again.');
+    } finally {
+      if (mounted) setState(() => _busyOrderId = null);
+    }
+  }
 
   void _message(String text) {
     ScaffoldMessenger.of(context)
@@ -37,7 +56,6 @@ class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        bottom: false,
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
@@ -49,66 +67,107 @@ class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
                   child: IncomingOrdersHeader(
                     onBack: _back,
                     onNotifications: () =>
-                        _message('No new notifications in this preview.'),
+                        _message('Shop notifications are not available yet.'),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: OrderTypeTabs(
-                    scheduled: _scheduled,
-                    onChanged: (value) => setState(() => _scheduled = value),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Expanded(
-                  child: _scheduled
-                      ? const Center(
+                  child: StreamBuilder<List<OrderModel>>(
+                    stream: _source,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const Center(
                           child: Text(
-                            'No scheduled orders',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.secondaryText,
+                            'Unable to load shop orders. Check your connection or approval.',
+                          ),
+                        );
+                      }
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final all = snapshot.data!;
+                      final newOrders = all
+                          .where((order) => order.status == 'placed')
+                          .toList();
+                      final visible = _scheduled
+                          ? all
+                                .where(
+                                  (order) => const {
+                                    'accepted',
+                                    'preparing',
+                                    'ready',
+                                  }.contains(order.status),
+                                )
+                                .toList()
+                          : newOrders;
+                      return Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: OrderTypeTabs(
+                              scheduled: _scheduled,
+                              newCount: newOrders.length,
+                              onChanged: (value) =>
+                                  setState(() => _scheduled = value),
                             ),
                           ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: mockIncomingOrders.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) => IncomingOrderCard(
-                            order: mockIncomingOrders[index],
-                            onAccept: () => _message('Order accepted'),
-                            onReject: () => _message('Order rejected'),
-                            onDetails: () => context.pushNamed(
-                              'shop-order-details',
-                              pathParameters: {
-                                'orderId': mockIncomingOrders[index].orderId
-                                    .substring(1),
-                              },
-                            ),
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: visible.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      _scheduled
+                                          ? 'No scheduled orders'
+                                          : 'No new orders',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.secondaryText,
+                                      ),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      0,
+                                      16,
+                                      24,
+                                    ),
+                                    itemCount: visible.length,
+                                    separatorBuilder: (context, index) =>
+                                        const SizedBox(height: 12),
+                                    itemBuilder: (context, index) {
+                                      final order = visible[index];
+                                      return IncomingOrderCard(
+                                        order: MockIncomingOrder.fromOrder(
+                                          order,
+                                        ),
+                                        onAccept: () {
+                                          if (_busyOrderId == null) {
+                                            context.pushNamed(
+                                              'confirm-availability',
+                                              pathParameters: {
+                                                'orderId': order.id,
+                                              },
+                                            );
+                                          }
+                                        },
+                                        onReject: () => _reject(order),
+                                        onDetails: () => context.pushNamed(
+                                          'shop-order-details',
+                                          pathParameters: {'orderId': order.id},
+                                        ),
+                                      );
+                                    },
+                                  ),
                           ),
-                        ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: DashboardBottomNav(
-        selectedIndex: 1,
-        onSelected: (index) {
-          switch (index) {
-            case 0:
-              context.goNamed('shop-dashboard');
-            case 1:
-              break;
-            case 2:
-              context.pushNamed('product-management');
-            case 3:
-              context.pushNamed('shop-profile');
-          }
-        },
       ),
     );
   }

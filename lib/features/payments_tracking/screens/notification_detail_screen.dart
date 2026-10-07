@@ -141,7 +141,12 @@ class _NotificationDetailContent extends StatelessWidget {
     '_',
   );
 
-  bool get _isOrder => _type == 'order_ready' || _type == 'order_accepted';
+  bool get _isOrder => const {
+    'order_ready',
+    'order_accepted',
+    'order_rejected',
+    'shop_message',
+  }.contains(_type);
   bool get _isProduct => _type == 'price_update';
   bool get _isOffer => _type == 'special_offer';
 
@@ -302,12 +307,15 @@ class _NotificationDetailContent extends StatelessWidget {
   String get _fallbackTitle => switch (_type) {
     'order_ready' => 'Order Ready!',
     'order_accepted' => 'Order Accepted',
+    'order_rejected' => 'Order Rejected',
+    'shop_message' => 'New Message',
     'price_update' => 'Price Update',
     'special_offer' => 'Special Offer',
     _ => 'Notification',
   };
 
   String get _actionLabel => switch (_type) {
+    'shop_message' => 'Reply to Shop',
     'price_update' => 'View Product',
     'special_offer' => 'View Offer',
     _ => 'View Order',
@@ -316,25 +324,39 @@ class _NotificationDetailContent extends StatelessWidget {
   IconData get _icon => switch (_type) {
     'order_ready' => Icons.notifications_active_outlined,
     'order_accepted' => Icons.shopping_bag_outlined,
+    'order_rejected' => Icons.cancel_outlined,
+    'shop_message' => Icons.chat_bubble_outline_rounded,
     'price_update' => Icons.sell_outlined,
     'special_offer' => Icons.card_giftcard_outlined,
     _ => Icons.notifications_none_rounded,
   };
 
   Color get _iconColor => switch (_type) {
-    'order_ready' || 'order_accepted' => AppColors.primary,
+    'order_ready' || 'order_accepted' || 'shop_message' => AppColors.primary,
+    'order_rejected' => AppColors.error,
     'price_update' => AppColors.accent,
     'special_offer' => const Color(0xFFCE4778),
     _ => AppColors.primary,
   };
 
   void _openDestination(BuildContext context) {
-    if (_isOrder) {
+    if (_type == 'shop_message' && notification.orderId != null) {
+      context.pushNamed(
+        'order-messages',
+        extra: {
+          'orderId': notification.orderId,
+          'shopName': arguments.order?.shopName,
+        },
+      );
+    } else if (_isOrder) {
       final order = arguments.order;
       final orderId = notification.orderId;
       context.pushNamed('order-details', extra: order ?? orderId);
     } else if (_isProduct) {
-      context.pushNamed('product-details', extra: notification.productId);
+      context.pushNamed(
+        'product-details',
+        queryParameters: {'id': notification.productId!},
+      );
     }
   }
 }

@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
 import '../models/mock_shop_product.dart';
 import '../widgets/dashboard_bottom_nav.dart';
 import '../widgets/product_form_controls.dart';
 import '../widgets/product_image_preview.dart';
 
-/// Supplying a mock product enables edit mode. Changes are never persisted.
 class AddEditProductScreen extends StatefulWidget {
-  const AddEditProductScreen({super.key, this.product});
+  const AddEditProductScreen({super.key, this.product, this.service});
   final MockShopProduct? product;
+  final FirestoreService? service;
   @override
   State<AddEditProductScreen> createState() => _AddEditProductScreenState();
 }
@@ -22,6 +23,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   late final TextEditingController _description;
   String? _category;
   late int _quantity;
+  bool _saving = false;
+  late final FirestoreService _service = widget.service ?? FirestoreService();
   bool get _editing => widget.product != null;
   static const _categories = [
     'Fruits',
@@ -37,7 +40,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     super.initState();
     _name = TextEditingController(text: widget.product?.name ?? '');
     _price = TextEditingController(
-      text: widget.product?.price.replaceFirst('Rs ', '') ?? '0.00',
+      text: widget.product?.price.replaceAll(RegExp(r'[^0-9.]'), '') ?? '',
     );
     _description = TextEditingController(
       text: widget.product?.description ?? '',
@@ -68,12 +71,33 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     }
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_saving) return;
     FocusScope.of(context).unfocus();
-    if (_formKey.currentState!.validate()) {
+    if (!_formKey.currentState!.validate()) return;
+    final amount = double.parse(_price.text.trim());
+    setState(() => _saving = true);
+    try {
+      await _service.saveShopProduct(
+        productId: _editing ? widget.product!.id : null,
+        name: _name.text,
+        category: _category!,
+        priceMinor: (amount * 100).round(),
+        stockQuantity: _quantity,
+        description: _description.text,
+        unit: widget.product?.unit ?? '',
+        imageUrl: widget.product?.imageUrl,
+        lowStockThreshold: widget.product?.lowStockThreshold ?? 5,
+      );
+      if (!mounted) return;
       _message(
         _editing ? 'Product changes saved' : 'Product added successfully',
       );
+      context.goNamed('product-management');
+    } catch (error) {
+      if (mounted) _message('Product could not be saved: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -98,7 +122,18 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         ],
       ),
     );
-    if (mounted && confirmed == true) _message('Product deleted');
+    if (!mounted || confirmed != true || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await _service.deactivateShopProduct(widget.product!.id);
+      if (!mounted) return;
+      _message('Product deactivated');
+      context.goNamed('product-management');
+    } catch (error) {
+      if (mounted) _message('Product could not be deactivated: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -133,9 +168,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                             child: ProductImagePreview(
                               product: widget.product,
                               onChange: () => _message(
-                                _editing
-                                    ? 'Change product image'
-                                    : 'Add product photo',
+                                'Product image upload is not available yet.',
                               ),
                             ),
                           ),
@@ -209,7 +242,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                 );
                                 return number == null ||
                                         !number.isFinite ||
-                                        number <= 0
+                                        number <= 0 ||
+                                        !RegExp(r'^\d+(\.\d{1,2})?$')
+                                            .hasMatch(value!.trim())
                                     ? 'Enter a price greater than 0'
                                     : null;
                               },
@@ -241,7 +276,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                           ),
                           SizedBox(height: _editing ? 2 : 40),
                           ElevatedButton(
-                            onPressed: _save,
+                            onPressed: _saving ? null : _save,
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(0, 46),
                               shape: RoundedRectangleBorder(
@@ -253,13 +288,17 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                               ),
                             ),
                             child: Text(
-                              _editing ? 'Save Changes' : 'Add Product',
+                              _saving
+                                  ? 'Saving...'
+                                  : _editing
+                                  ? 'Save Changes'
+                                  : 'Add Product',
                             ),
                           ),
                           if (_editing) ...[
                             const SizedBox(height: 10),
                             OutlinedButton(
-                              onPressed: _delete,
+                              onPressed: _saving ? null : _delete,
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: AppColors.surface,
                                 foregroundColor: AppColors.rejectRed,
@@ -275,7 +314,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              child: const Text('Delete Product'),
+                              child: const Text('Deactivate Product'),
                             ),
                           ],
                         ],

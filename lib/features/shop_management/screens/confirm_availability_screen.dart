@@ -2,22 +2,72 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/services/order_service.dart';
+import '../../../models/product_model.dart';
 import '../models/mock_order_details.dart';
 import '../models/availability_item.dart';
 import '../widgets/availability_product_card.dart';
-import '../widgets/replacement_selector.dart';
 import '../widgets/send_to_customer_bottom_bar.dart';
 
 class ConfirmAvailabilityScreen extends StatefulWidget {
-  const ConfirmAvailabilityScreen({super.key, required this.order});
+  const ConfirmAvailabilityScreen({
+    super.key,
+    required this.order,
+    this.products,
+    this.orders,
+  });
   final MockOrderDetails order;
+  final FirestoreService? products;
+  final OrderService? orders;
   @override
   State<ConfirmAvailabilityScreen> createState() =>
       _ConfirmAvailabilityScreenState();
 }
 
 class _ConfirmAvailabilityScreenState extends State<ConfirmAvailabilityScreen> {
-  String _selectedReplacement = ReplacementSelector.options.first;
+  late final FirestoreService _products = widget.products ?? FirestoreService();
+  late final OrderService _orders = widget.orders ?? OrderService();
+  late final Stream<List<ProductModel>> _source = _products.shopProducts();
+  bool _busy = false;
+
+  Future<void> _accept() async {
+    if (_busy || widget.order.status != 'PLACED') return;
+    setState(() => _busy = true);
+    try {
+      final latest = await _products.currentProducts();
+      final byId = {for (final product in latest) product.id: product};
+      final unavailable = widget.order.items
+          .where(
+            (item) =>
+                byId[item.productId] == null ||
+                byId[item.productId]!.stockQuantity < item.quantity,
+          )
+          .toList();
+      if (unavailable.isNotEmpty) {
+        throw OrderActionException(
+          '${unavailable.first.name} is unavailable in the requested quantity.',
+        );
+      }
+      await _orders.updateOrderStatus(
+        orderId: widget.order.orderId.substring(1),
+        status: 'accepted',
+      );
+      if (!mounted) return;
+      context.goNamed(
+        'update-order-status',
+        pathParameters: {'orderId': widget.order.orderId.substring(1)},
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Order could not be accepted: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   void _back() {
     if (context.canPop()) {
@@ -46,64 +96,84 @@ class _ConfirmAvailabilityScreenState extends State<ConfirmAvailabilityScreen> {
                 onBack: _back,
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
+                child: StreamBuilder<List<ProductModel>>(
+                  stream: _source,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text('Unable to check product stock.'),
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final byId = {
+                      for (final product in snapshot.data!) product.id: product,
+                    };
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
-                            child: Text(
-                              'REVIEW ITEMS (${widget.order.items.length})',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: .4,
-                                color: AppColors.secondaryText,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'REVIEW ITEMS (${widget.order.items.length})',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: .4,
+                                    color: AppColors.secondaryText,
+                                  ),
+                                ),
                               ),
-                            ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.softGreen,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'Variant B: Status',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.softGreen,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Text(
-                              'Variant B: Status',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: AppColors.primary,
+                          const SizedBox(height: 14),
+                          for (
+                            var index = 0;
+                            index < widget.order.items.length;
+                            index++
+                          ) ...[
+                            if (index > 0) const SizedBox(height: 11),
+                            AvailabilityProductCard(
+                              item: AvailabilityItem.fromOrderItem(
+                                widget.order.items[index],
+                                current:
+                                    byId[widget.order.items[index].productId],
                               ),
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+                          Text(
+                            'Customer replacement preference: ${widget.order.replacementPreference}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.secondaryText,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
-                      for (
-                        var index = 0;
-                        index < widget.order.items.length;
-                        index++
-                      ) ...[
-                        if (index > 0) const SizedBox(height: 11),
-                        AvailabilityProductCard(
-                          item: AvailabilityItem.fromOrderItem(
-                            widget.order.items[index],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                      ReplacementSelector(
-                        selected: _selectedReplacement,
-                        onChanged: (value) =>
-                            setState(() => _selectedReplacement = value),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -112,10 +182,7 @@ class _ConfirmAvailabilityScreenState extends State<ConfirmAvailabilityScreen> {
       ),
     ),
     bottomNavigationBar: SendToCustomerBottomBar(
-      onSend: () => context.pushNamed(
-        'update-order-status',
-        pathParameters: {'orderId': widget.order.orderId.substring(1)},
-      ),
+      onSend: _busy || widget.order.status != 'PLACED' ? null : _accept,
     ),
   );
 }

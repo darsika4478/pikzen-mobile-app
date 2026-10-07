@@ -14,6 +14,7 @@ import 'package:pikzen/features/auth/providers/auth_provider.dart';
 import 'package:pikzen/features/auth/screens/shop_approval_status_screen.dart';
 import 'package:pikzen/features/auth/widgets/auth_ui.dart';
 import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
+import 'package:pikzen/features/cart_checkout/providers/checkout_provider.dart';
 import 'package:pikzen/features/product_discovery/providers/product_provider.dart';
 import 'package:pikzen/features/shop_management/screens/shop_dashboard_screen.dart';
 import 'package:pikzen/models/user_model.dart';
@@ -162,9 +163,11 @@ void main() {
       restore: false,
     )..user = user;
     final cart = CartProvider();
+    final checkout = CheckoutProvider();
     final products = ProductProvider();
     addTearDown(auth.dispose);
     addTearDown(cart.dispose);
+    addTearDown(checkout.dispose);
     addTearDown(products.dispose);
     appRouter.go(path);
     await tester.pumpWidget(
@@ -172,6 +175,7 @@ void main() {
         providers: [
           ChangeNotifierProvider.value(value: auth),
           ChangeNotifierProvider.value(value: cart),
+          ChangeNotifierProvider.value(value: checkout),
           ChangeNotifierProvider.value(value: products),
         ],
         child: MaterialApp.router(
@@ -183,6 +187,57 @@ void main() {
     await tester.pumpAndSettle();
     return auth;
   }
+
+  testWidgets('customer checkout is allowed and shop/admin are redirected', (
+    tester,
+  ) async {
+    final auth = await mount(tester, '/login');
+    for (final (role, approval, expected) in [
+      ('customer', null, '/checkout'),
+      ('shop', 'approved', '/shop-dashboard'),
+      ('shop', 'pending', '/shop-pending'),
+      ('shop', 'rejected', '/shop-rejected'),
+      ('admin', null, '/admin/users'),
+    ]) {
+      auth.user = UserModel(
+        id: 'role-user',
+        name: 'User',
+        email: 'user@example.com',
+        role: role,
+        approvalStatus: approval,
+      );
+      appRouter.go('/checkout');
+      await tester.pumpAndSettle();
+      expect(
+        appRouter.routeInformationProvider.value.uri.path,
+        expected,
+        reason: 'role=$role, approval=$approval',
+      );
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('customer cannot open shop or admin routes', (tester) async {
+    await mount(
+      tester,
+      '/login',
+      user: const UserModel(
+        id: 'customer',
+        name: 'Customer',
+        email: 'customer@example.com',
+        role: 'customer',
+      ),
+    );
+    for (final path in ['/shop-dashboard', '/admin/users']) {
+      appRouter.go(path);
+      await tester.pumpAndSettle();
+      expect(
+        appRouter.routeInformationProvider.value.uri.path,
+        '/customer-home',
+      );
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   for (final (role, status, expectedPath) in [
     ('customer', null, '/customer-home'),
@@ -302,7 +357,7 @@ void main() {
           role: 'shop',
           approvalStatus: status,
         );
-        for (final path in ['/shop-dashboard', '/inventory']) {
+        for (final path in ['/shop-dashboard', '/inventory-stock']) {
           appRouter.go(path);
           await tester.pumpAndSettle();
           expect(
@@ -312,6 +367,7 @@ void main() {
               'rejected' => '/shop-rejected',
               _ => path,
             },
+            reason: 'status=$status, requested=$path',
           );
         }
       }

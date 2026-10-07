@@ -2,28 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../models/product_model.dart';
 import '../models/mock_shop_product.dart';
 import '../widgets/products_header.dart';
 import '../widgets/product_search_bar.dart';
 import '../widgets/product_list_card.dart';
 import '../widgets/dashboard_bottom_nav.dart';
 
-/// Merchant products preview with local search only.
 class ProductsScreen extends StatefulWidget {
-  const ProductsScreen({super.key});
+  const ProductsScreen({super.key, this.service});
+  final FirestoreService? service;
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
   String _search = '';
+  late final FirestoreService _service = widget.service ?? FirestoreService();
+  late final Stream<List<ProductModel>> _products = _service.shopProducts();
   void _openForm([MockShopProduct? product]) {
     FocusScope.of(context).unfocus();
     context.pushNamed(
       'add-edit-product',
-      queryParameters: {
-        if (product != null) 'product': product.visualType.name,
-      },
+      queryParameters: {if (product != null) 'productId': product.id},
     );
   }
 
@@ -37,12 +39,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final products = mockShopProducts
-        .where(
-          (product) =>
-              product.name.toLowerCase().contains(_search.trim().toLowerCase()),
-        )
-        .toList();
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -79,8 +75,29 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 ),
                 const SizedBox(height: 12),
                 Expanded(
-                  child: products.isEmpty
-                      ? const Center(
+                  child: StreamBuilder<List<ProductModel>>(
+                    stream: _products,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const Center(
+                          child: Text(
+                            'Unable to load shop products. Check your connection or approval.',
+                          ),
+                        );
+                      }
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final products = snapshot.data!
+                          .where(
+                            (product) => product.name.toLowerCase().contains(
+                              _search.trim().toLowerCase(),
+                            ),
+                          )
+                          .map(MockShopProduct.fromProduct)
+                          .toList();
+                      if (products.isEmpty) {
+                        return const Center(
                           child: Text(
                             'No products found',
                             style: TextStyle(
@@ -88,19 +105,22 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               color: AppColors.secondaryText,
                             ),
                           ),
-                        )
-                      : ListView.separated(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: products.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) => ProductListCard(
-                            product: products[index],
-                            onSelected: () => _openForm(products[index]),
-                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        itemCount: products.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (context, index) => ProductListCard(
+                          product: products[index],
+                          onSelected: () => _openForm(products[index]),
                         ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
