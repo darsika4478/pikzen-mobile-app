@@ -8,8 +8,8 @@ class OrderActionBottomBar extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
   });
-  final VoidCallback onAccept;
-  final VoidCallback onReject;
+  final VoidCallback? onAccept;
+  final VoidCallback? onReject;
   @override
   Widget build(BuildContext context) => Container(
     decoration: const BoxDecoration(

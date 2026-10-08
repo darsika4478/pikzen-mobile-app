@@ -9,7 +9,7 @@ class OrderStatusBottomBar extends StatelessWidget {
     required this.onAdvance,
   });
   final int activeStage;
-  final VoidCallback onAdvance;
+  final VoidCallback? onAdvance;
   @override
   Widget build(BuildContext context) => Container(
     decoration: const BoxDecoration(
@@ -48,9 +48,11 @@ class OrderStatusBottomBar extends StatelessWidget {
                     Text(
                       activeStage == 4
                           ? 'Order Completed'
-                          : activeStage == 2
+                          : activeStage == 3
                           ? 'Mark as Collected'
-                          : 'Mark as Ready',
+                          : activeStage == 2
+                          ? 'Mark as Ready'
+                          : 'Start Preparing',
                     ),
                     if (activeStage != 4) ...[
                       const SizedBox(width: 9),

@@ -1,12 +1,14 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/constants/app_assets.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
+import '../../features/auth/providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -24,8 +26,10 @@ class _SplashScreenState extends State<SplashScreen> {
     // Begin once the first frame is displayed, rather than during app setup.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _timer = Timer(const Duration(seconds: 8), () {
-        if (mounted) context.goNamed('onboarding');
+      _timer = Timer(const Duration(seconds: 8), () async {
+        final auth = context.read<AuthProvider>();
+        await auth.ready;
+        if (mounted) context.goNamed(auth.destination ?? 'onboarding');
       });
     });
   }

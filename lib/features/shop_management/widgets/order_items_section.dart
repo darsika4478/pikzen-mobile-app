@@ -62,6 +62,7 @@ class OrderProductCard extends StatelessWidget {
       OrderItemType.apple => ('🍎', AppColors.rejectBackground),
       OrderItemType.banana => ('🍌', AppColors.bananaBackground),
       OrderItemType.milk => ('🥛', AppColors.milkBackground),
+      OrderItemType.other => ('📦', AppColors.softGreen),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),

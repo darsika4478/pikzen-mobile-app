@@ -9,11 +9,18 @@ import 'package:flutter/foundation.dart';
 import '../../../models/product_model.dart';
 
 class ProductProvider extends ChangeNotifier {
-  ProductProvider({Stream<List<ProductModel>>? source}) : _source = source {
+  ProductProvider({Stream<List<ProductModel>>? source, this._store})
+    : _source = source {
     if (source != null) _listen(source);
   }
   final Stream<List<ProductModel>>? _source;
+  final FirestoreService? _store;
   StreamSubscription<List<ProductModel>>? _subscription;
+  StreamSubscription<Set<String>>? _favouriteSubscription;
+
+  /// Favourites persist in Firestore when Firebase (or a test store) exists.
+  FirestoreService? get _favouriteStore =>
+      _store ?? (Firebase.apps.isNotEmpty ? FirestoreService() : null);
   List<ProductModel> _products = catalog;
   bool isDemo = true;
   bool loading = false;
@@ -51,7 +58,21 @@ class ProductProvider extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _favouriteSubscription?.cancel();
     super.dispose();
+  }
+
+  void _listenFavourites(String? uid) {
+    _favouriteSubscription?.cancel();
+    _favouriteSubscription = null;
+    final store = _favouriteStore;
+    if (uid == null || store == null) return;
+    _favouriteSubscription = store.favouriteIds(uid).listen((ids) {
+      _favourites
+        ..clear()
+        ..addAll(ids);
+      notifyListeners();
+    }, onError: (Object _) {});
   }
 
   // A single fallback, replaced entirely by the shared Firestore catalog.
@@ -124,6 +145,7 @@ class ProductProvider extends ChangeNotifier {
     if (_owner != uid) {
       _owner = uid;
       _favourites.clear();
+      _listenFavourites(uid);
       if (_source == null) {
         _subscription?.cancel();
         _hadLiveProducts = false;
@@ -164,7 +186,17 @@ class ProductProvider extends ChangeNotifier {
       _products.where((p) => isFavourite(p.id)).toList();
   void toggleFavourite(String id) {
     if (byId(id) == null) return;
-    if (!_favourites.remove(id)) _favourites.add(id);
+    final saved = !_favourites.remove(id);
+    if (saved) _favourites.add(id);
     notifyListeners();
+    final uid = _owner;
+    final store = _favouriteStore;
+    if (uid == null || store == null) return;
+    store.setFavourite(uid, id, saved).catchError((Object _) {
+      // Roll back the optimistic change if the write is rejected.
+      if (_owner != uid) return;
+      saved ? _favourites.remove(id) : _favourites.add(id);
+      notifyListeners();
+    });
   }
 }

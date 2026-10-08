@@ -49,6 +49,7 @@ app.*.map.json
 
 # Local Node admin tooling and credentials
 node_modules/
+/functions/lib/
 .env
 .env.*
 .credentials/
@@ -58,3 +59,12 @@ service-account.local.json
 *firebase-adminsdk*.json
 *.pem
 *.key
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

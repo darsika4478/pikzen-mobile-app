@@ -73,6 +73,55 @@ npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project demo-
 ```
 
 Run from the repository root. The dedicated config is for local testing only;
-the tests use a fixed demo project and localhost:8087, never production credentials.
+the tests use a fixed demo project and the local emulator, never production credentials.
 They verify public creation restrictions, role/approval protection, admin decisions,
 legacy shop handling, and admin-only queries. Do not deploy this emulator config.
+
+## Demo data seed (campus demo)
+
+`scripts/seed_demo_data.js` creates fictional accounts, 19 products for an approved
+demo shop, and three sample orders (placed / preparing / ready) with simulated
+payment receipts. It only writes `demo-*` documents and the accounts below, and
+reruns reset them. Existing accounts keep their passwords.
+
+| Role | Email |
+| --- | --- |
+| Customer | `demo.customer@pikzen.test` |
+| Approved shop | `demo.shop@pikzen.test` (PikZen Demo Mart) |
+| Pending shop | `demo.pending@pikzen.test` (for the admin approval demo) |
+| Admin | `demo.admin@pikzen.test` |
+
+```powershell
+# Real project (same credential setup as above); you are prompted for the password.
+$env:GOOGLE_CLOUD_PROJECT = "pikzen-mobile-app"
+node scripts/seed_demo_data.js
+
+# Or local emulators (no credentials needed); set both hosts.
+$env:FIRESTORE_EMULATOR_HOST = "127.0.0.1:8087"
+$env:FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099"
+node scripts/seed_demo_data.js
+```
+
+## Demo payments
+
+No payment provider is contacted and nothing is charged. Each order gets a
+receipt at `payments/{orderId}` (reference `DEMO-XXXXXXXX`); card receipts keep
+only the last four digits. Cash orders stay `pending` until the shop marks the
+order collected, which sets them to `paid`.
+
+| Dummy card | Result |
+| --- | --- |
+| `4242 4242 4242 4242` (or any other 16 digits) | Approved |
+| `4000 0000 0000 0002` | Declined |
+| `4000 0000 0000 9995` | Insufficient funds |
+
+Any future `MM/YY` expiry and any 3-digit CVV work; past expiry dates are rejected.
+
+## Backend rule tests
+
+`scripts/backend_rules.test.js` covers payment receipts, order chat, favourites
+and order-event notifications. Run it like the other rule tests:
+
+```powershell
+npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project demo-pikzen-backend --config firebase.emulator.json "node --test scripts/backend_rules.test.js scripts/order_rules.test.js scripts/shop_approval_rules.test.js"
+```

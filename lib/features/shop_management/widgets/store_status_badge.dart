@@ -17,7 +17,7 @@ class StoreStatusBadge extends StatelessWidget {
         Icon(Icons.circle, color: AppColors.primary, size: 6),
         SizedBox(width: 6),
         Text(
-          'Online • Store Open',
+          'Approved Shop Partner',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,

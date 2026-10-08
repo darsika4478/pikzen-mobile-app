@@ -1,7 +1,6 @@
 import '../../features/cart_checkout/widgets/cart_badge.dart';
 
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
@@ -26,6 +25,7 @@ import '../../features/payments_tracking/screens/order_cancellation_screen.dart'
 import '../../features/payments_tracking/screens/notifications_screen.dart';
 import '../../features/payments_tracking/screens/notification_detail_screen.dart';
 import '../../features/payments_tracking/screens/order_history_screen.dart';
+import '../../features/payments_tracking/screens/order_messages_screen.dart';
 import '../../features/payments_tracking/screens/order_tracking_screen.dart';
 import '../../features/payments_tracking/screens/card_payment_screen.dart';
 import '../../features/payments_tracking/screens/payment_selection_screen.dart';
@@ -46,12 +46,11 @@ import '../../features/shop_management/screens/order_details_screen.dart';
 import '../../features/shop_management/screens/confirm_availability_screen.dart';
 import '../../features/shop_management/screens/update_order_status_screen.dart';
 import '../../features/shop_management/screens/contact_customer_screen.dart';
-import '../../features/shop_management/models/mock_incoming_order.dart';
 import '../../features/shop_management/models/mock_order_details.dart';
 import '../../features/shop_management/models/mock_shop_product.dart';
-import '../../features/shop_management/screens/inventory_screen.dart';
+import '../services/firestore_service.dart';
+import '../services/order_service.dart';
 import '../../features/shop_management/screens/inventory_stock_screen.dart';
-import '../../features/shop_management/screens/prepare_order_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
 import '../../features/shop_management/screens/shop_dashboard_screen.dart';
 import '../../models/order_model.dart';
@@ -62,16 +61,26 @@ import '../../shared/screens/splash_screen.dart';
 
 // Shared routes. Login destinations are selected from the authenticated profile.
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/shop-dashboard',
+  initialLocation: '/splash',
   redirect: (context, state) {
     final path = state.uri.path;
+    final auth = context.read<AuthProvider>();
+    if (auth.restoring && path != '/splash') return '/splash';
+    const publicPaths = {
+      '/splash',
+      '/onboarding',
+      '/login',
+      '/signup',
+      '/forgot-password',
+    };
+    if (publicPaths.contains(path)) return null;
+    if (auth.user == null) return '/login';
     final isAdmin = path == '/admin/users';
+    final isApproval = path == '/shop-pending' || path == '/shop-rejected';
     final isShop =
         const {
           '/shop-dashboard',
-          '/inventory',
           '/inventory-stock',
-          '/prepare-order',
           '/product-management',
           '/add-edit-product',
           '/incoming-orders',
@@ -84,24 +93,15 @@ final GoRouter appRouter = GoRouter(
           '/update-order-status/',
           '/contact-customer/',
         ].any(path.startsWith);
-    if (!isAdmin && !isShop) {
-      return null;
-    }
-    final auth = context.read<AuthProvider>();
-    if (isAdmin) {
-      return auth.user?.role == 'admin' ? null : '/login';
-    }
-    // The Firebase-free shop preview deliberately supports mock UI without login.
-    if (auth.user == null && Firebase.apps.isEmpty) {
-      return null;
-    }
-    if (auth.user?.role != 'shop') {
-      return '/login';
-    }
-    return switch (auth.user!.approvalStatus) {
-      'approved' => null,
-      null || 'pending' => '/shop-pending',
-      'rejected' => '/shop-rejected',
+    return switch (auth.user!.role) {
+      'customer' => isShop || isAdmin || isApproval ? '/customer-home' : null,
+      'admin' => isAdmin ? null : '/admin/users',
+      'shop' => switch (auth.user!.approvalStatus) {
+        'approved' => isShop ? null : '/shop-dashboard',
+        null || 'pending' => path == '/shop-pending' ? null : '/shop-pending',
+        'rejected' => path == '/shop-rejected' ? null : '/shop-rejected',
+        _ => '/login',
+      },
       _ => '/login',
     };
   },
@@ -285,6 +285,19 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/order-messages',
+      name: 'order-messages',
+      builder: (context, state) {
+        final args = state.extra is Map ? state.extra as Map : const {};
+        return OrderMessagesScreen(
+          orderId: state.extra is String
+              ? state.extra as String
+              : args['orderId'] as String?,
+          shopName: args['shopName'] as String?,
+        );
+      },
+    ),
+    GoRoute(
       path: '/order-cancellation',
       name: 'order-cancellation',
       builder: (context, state) => OrderCancellationScreen(
@@ -380,14 +393,14 @@ final GoRouter appRouter = GoRouter(
         final checkout = PaymentCheckoutData.fromExtra(state.extra);
         final paymentMethod = args['paymentMethod'];
         return PaymentFailureScreen(
+          message: args['errorMessage'] is String
+              ? args['errorMessage'] as String
+              : null,
           paymentMethod: paymentMethod is String ? paymentMethod : 'card',
           amountMinor: checkout.totalMinor,
           currencyCode: checkout.currency,
           orderId: checkout.id,
           orderDraft: checkout.orderDraft,
-          message: args['errorMessage'] is String
-              ? args['errorMessage'] as String
-              : null,
         );
       },
     ),
@@ -407,13 +420,34 @@ final GoRouter appRouter = GoRouter(
       path: '/add-edit-product',
       name: 'add-edit-product',
       builder: (context, state) {
-        final selected = state.uri.queryParameters['product'];
-        for (final product in mockShopProducts) {
-          if (product.visualType.name == selected) {
-            return AddEditProductScreen(product: product);
-          }
-        }
-        return const AddEditProductScreen();
+        final productId = state.uri.queryParameters['productId'];
+        if (productId == null) return const AddEditProductScreen();
+        return StreamBuilder(
+          stream: FirestoreService().watchShopProduct(productId),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Scaffold(
+                body: Center(child: Text('Unable to load product.')),
+              );
+            }
+            if (!snapshot.hasData &&
+                snapshot.connectionState != ConnectionState.active) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final product = snapshot.data;
+            if (product == null) {
+              return const Scaffold(
+                body: Center(child: Text('Product not found.')),
+              );
+            }
+            return AddEditProductScreen(
+              key: ValueKey(product.id),
+              product: MockShopProduct.fromProduct(product),
+            );
+          },
+        );
       },
     ),
     GoRoute(
@@ -424,67 +458,34 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/shop-order-details/:orderId',
       name: 'shop-order-details',
-      builder: (context, state) {
-        final id = state.pathParameters['orderId'];
-        for (final order in mockIncomingOrders) {
-          if (order.orderId.substring(1) == id) {
-            return OrderDetailsScreen(
-              order: MockOrderDetails.fromIncoming(order),
-            );
-          }
-        }
-        return const Scaffold(
-          body: SafeArea(child: Center(child: Text('Order not found'))),
-        );
-      },
+      builder: (context, state) => _shopOrderPage(
+        state.pathParameters['orderId']!,
+        (order) => OrderDetailsScreen(order: order),
+      ),
     ),
     GoRoute(
       path: '/confirm-availability/:orderId',
       name: 'confirm-availability',
-      builder: (context, state) {
-        for (final order in mockIncomingOrders) {
-          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
-            return ConfirmAvailabilityScreen(
-              order: MockOrderDetails.fromIncoming(order),
-            );
-          }
-        }
-        return const Scaffold(
-          body: SafeArea(child: Center(child: Text('Order not found'))),
-        );
-      },
+      builder: (context, state) => _shopOrderPage(
+        state.pathParameters['orderId']!,
+        (order) => ConfirmAvailabilityScreen(order: order),
+      ),
     ),
     GoRoute(
       path: '/update-order-status/:orderId',
       name: 'update-order-status',
-      builder: (context, state) {
-        for (final order in mockIncomingOrders) {
-          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
-            return UpdateOrderStatusScreen(
-              order: MockOrderDetails.fromIncoming(order),
-            );
-          }
-        }
-        return const Scaffold(
-          body: SafeArea(child: Center(child: Text('Order not found'))),
-        );
-      },
+      builder: (context, state) => _shopOrderPage(
+        state.pathParameters['orderId']!,
+        (order) => UpdateOrderStatusScreen(order: order),
+      ),
     ),
     GoRoute(
       path: '/contact-customer/:orderId',
       name: 'contact-customer',
-      builder: (context, state) {
-        for (final order in mockIncomingOrders) {
-          if (order.orderId.substring(1) == state.pathParameters['orderId']) {
-            return ContactCustomerScreen(
-              order: MockOrderDetails.fromIncoming(order),
-            );
-          }
-        }
-        return const Scaffold(
-          body: SafeArea(child: Center(child: Text('Order not found'))),
-        );
-      },
+      builder: (context, state) => _shopOrderPage(
+        state.pathParameters['orderId']!,
+        (order) => ContactCustomerScreen(order: order),
+      ),
     ),
     GoRoute(
       path: '/shop-edit-profile',
@@ -500,16 +501,6 @@ final GoRouter appRouter = GoRouter(
       path: '/inventory-stock',
       name: 'inventory-stock',
       builder: (context, state) => const InventoryStockScreen(),
-    ),
-    GoRoute(
-      path: '/inventory',
-      name: 'inventory',
-      builder: (context, state) => const InventoryScreen(),
-    ),
-    GoRoute(
-      path: '/prepare-order',
-      name: 'prepare-order',
-      builder: (context, state) => const PrepareOrderScreen(),
     ),
     GoRoute(
       path: '/product-management',
@@ -535,6 +526,27 @@ final GoRouter appRouter = GoRouter(
 );
 
 /// Temporary customer navigation shared by the five existing tab screens.
+Widget _shopOrderPage(String orderId, Widget Function(MockOrderDetails) build) {
+  return StreamBuilder<OrderModel?>(
+    stream: OrderService().watchShopOrder(orderId),
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return const Scaffold(
+          body: Center(child: Text('Unable to load shop order.')),
+        );
+      }
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      final order = snapshot.data;
+      if (order == null) {
+        return const Scaffold(body: Center(child: Text('Order not found.')));
+      }
+      return build(MockOrderDetails.fromOrder(order));
+    },
+  );
+}
+
 class _CustomerNavigationShell extends StatelessWidget {
   const _CustomerNavigationShell({required this.location, required this.child});
 

@@ -213,6 +213,27 @@ class _CustomerOrderDetailsScreenState
                       _OrderItemsCard(items: selectedOrder.items),
                       const SizedBox(height: 14),
                       _OrderSummaryCard(order: selectedOrder),
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: () => context.pushNamed(
+                          'order-messages',
+                          extra: {
+                            'orderId': selectedOrder.id,
+                            'shopName': selectedOrder.shopName,
+                          },
+                        ),
+                        icon: const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('Message Shop'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(46),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),

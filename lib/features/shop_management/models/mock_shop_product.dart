@@ -1,3 +1,5 @@
+import '../../../models/product_model.dart';
+
 enum ShopProductVisual { apple, banana, milk, bread }
 
 /// Display-only products, kept separate from the live customer catalog.
@@ -10,6 +12,11 @@ class MockShopProduct {
     this.category = 'Other',
     this.stockQuantity = 0,
     this.description = '',
+    this.id = '',
+    this.unit = '',
+    this.lowStockThreshold = 5,
+    this.isActive = true,
+    this.imageUrl,
   });
   final String name;
   final String price;
@@ -18,6 +25,42 @@ class MockShopProduct {
   final String category;
   final int stockQuantity;
   final String description;
+  final String id;
+  final String unit;
+  final int lowStockThreshold;
+  final bool isActive;
+  final String? imageUrl;
+
+  factory MockShopProduct.fromProduct(ProductModel product) {
+    final lower = product.name.toLowerCase();
+    final visual = lower.contains('banana')
+        ? ShopProductVisual.banana
+        : lower.contains('milk') || product.category == 'Dairy'
+        ? ShopProductVisual.milk
+        : lower.contains('bread') || product.category == 'Bakery'
+        ? ShopProductVisual.bread
+        : ShopProductVisual.apple;
+    return MockShopProduct(
+      id: product.id,
+      name: product.name,
+      price: product.priceLabel,
+      visualType: visual,
+      status: !product.isActive
+          ? 'Inactive'
+          : switch (product.stock) {
+              StockStatus.inStock => 'In Stock',
+              StockStatus.lowStock => 'Low Stock',
+              StockStatus.outOfStock => 'Out of Stock',
+            },
+      category: product.category,
+      stockQuantity: product.stockQuantity,
+      description: product.description ?? '',
+      unit: product.unit,
+      lowStockThreshold: product.lowStockThreshold,
+      isActive: product.isActive,
+      imageUrl: product.imageUrl,
+    );
+  }
 }
 
 const mockShopProducts = [

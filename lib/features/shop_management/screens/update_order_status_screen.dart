@@ -2,21 +2,62 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/order_service.dart';
 import '../models/mock_order_details.dart';
 import '../widgets/order_status_timeline.dart';
 import '../widgets/order_status_summary_card.dart';
 import '../widgets/order_status_bottom_bar.dart';
 
 class UpdateOrderStatusScreen extends StatefulWidget {
-  const UpdateOrderStatusScreen({super.key, required this.order});
+  const UpdateOrderStatusScreen({
+    super.key,
+    required this.order,
+    this.orderService,
+  });
   final MockOrderDetails order;
+  final OrderService? orderService;
   @override
   State<UpdateOrderStatusScreen> createState() =>
       _UpdateOrderStatusScreenState();
 }
 
 class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
-  int _activeStage = 1;
+  late final OrderService _orders = widget.orderService ?? OrderService();
+  bool _busy = false;
+  int get _activeStage => switch (widget.order.status) {
+    'ACCEPTED' => 1,
+    'PREPARING' => 2,
+    'READY' => 3,
+    'COLLECTED' => 4,
+    _ => 0,
+  };
+
+  Future<void> _advance() async {
+    if (_busy) return;
+    final next = switch (widget.order.status) {
+      'ACCEPTED' => 'preparing',
+      'PREPARING' => 'ready',
+      'READY' => 'collected',
+      _ => null,
+    };
+    if (next == null) return;
+    setState(() => _busy = true);
+    try {
+      await _orders.updateOrderStatus(
+        orderId: widget.order.orderId.substring(1),
+        status: next,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Status could not be updated: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _back() {
     if (context.canPop()) {
       context.pop();
@@ -53,11 +94,7 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: OrderStatusTimeline(
                           activeStage: _activeStage,
-                          acceptedAt: switch (widget.order.orderId) {
-                            '#P2002' => '12 Dec, 11:35 AM',
-                            '#P2003' => '12 Dec, 01:05 PM',
-                            _ => '12 Dec, 10:05 AM',
-                          },
+                          acceptedAt: widget.order.acceptedAtLabel,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -73,7 +110,9 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
     ),
     bottomNavigationBar: OrderStatusBottomBar(
       activeStage: _activeStage,
-      onAdvance: () => setState(() => _activeStage = _activeStage == 1 ? 2 : 4),
+      onAdvance: _busy || _activeStage == 0 || _activeStage == 4
+          ? null
+          : _advance,
     ),
   );
 }

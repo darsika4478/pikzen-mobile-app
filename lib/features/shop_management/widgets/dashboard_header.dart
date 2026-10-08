@@ -9,9 +9,11 @@ class DashboardHeader extends StatelessWidget {
     super.key,
     required this.onNotifications,
     required this.onShop,
+    required this.shopName,
   });
   final VoidCallback onNotifications;
   final VoidCallback onShop;
+  final String shopName;
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,11 +77,6 @@ class DashboardHeader extends StatelessWidget {
                   tooltip: 'Notifications',
                   icon: const Icon(Icons.notifications_none_rounded, size: 23),
                 ),
-                const Positioned(
-                  right: 12,
-                  top: 10,
-                  child: Icon(Icons.circle, size: 6, color: AppColors.warning),
-                ),
               ],
             ),
           ),
@@ -90,11 +87,11 @@ class DashboardHeader extends StatelessWidget {
       const SizedBox(height: 24),
       Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Good Morning!',
                   style: TextStyle(
                     fontSize: 27,
@@ -103,10 +100,10 @@ class DashboardHeader extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
-                  'GreenMart • Tue, 12 Dec 2024',
-                  style: TextStyle(
+                  '$shopName • ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+                  style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.secondaryText,
                   ),

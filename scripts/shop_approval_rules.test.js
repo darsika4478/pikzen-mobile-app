@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 
 // Fixed local emulator + demo project only: this file cannot target production.
 const project = 'demo-pikzen-approval';
-const base = 'http://127.0.0.1:8087/v1/projects/' + project + '/databases/(default)/documents';
+const host = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8087';
+const base = 'http://' + host + '/v1/projects/' + project + '/databases/(default)/documents';
 function token(uid) {
   const encode = v => Buffer.from(JSON.stringify(v)).toString('base64url');
   return encode({ alg: 'none', typ: 'JWT' }) + '.' + encode({
@@ -69,12 +70,15 @@ test('customers/shops cannot change role or self-approve; normal own edits survi
   await denied(write('customer', 'customer', { role: 'shop', approvalStatus: 'pending' }));
   await denied(write('customer', 'shop', { approvalStatus: 'approved' }));
   await allowed(write('shop', 'shop', { fullName: 'Updated Name', phone: '+94771234567' }));
+  await denied(write('shop', 'shop', { shopName: 'Orchard Shop' }));
+  await denied(write('customer', 'customer', { shopName: 'Not a shop' }));
 });
 test('admin can approve/reject only pending shops and only the approval field', async () => {
   await denied(write('admin', 'shop', { approvalStatus: 'approved', role: 'admin' }));
   await denied(write('admin', 'shop', { approvalStatus: 'unknown' }));
   await denied(write('admin', 'customer', { approvalStatus: 'approved' }));
   await allowed(write('admin', 'shop', { approvalStatus: 'approved' }));
+  await allowed(write('shop', 'shop', { shopName: 'Orchard Shop', storeAddress: 'Main Street' }));
   await denied(write('admin', 'shop', { approvalStatus: 'rejected' }));
   await allowed(write('rejectshop', 'rejectshop', profile('rejectshop', 'shop', 'pending'), { create: true }));
   await allowed(write('admin', 'rejectshop', { approvalStatus: 'rejected' }));
@@ -105,12 +109,22 @@ test('only admins can query pending shops', async () => {
 test('shared products require approved ownership and nonnegative stock/price', async () => {
   async function productWrite(actor, data, create = false) {
     const productFields = Object.fromEntries(Object.entries(data).map(([key, value]) =>
-      [key, typeof value === 'number' ? { integerValue: String(value) } : { stringValue: value }]));
+      [key, typeof value === 'number' ? { integerValue: String(value) }
+        : typeof value === 'boolean' ? { booleanValue: value }
+        : { stringValue: value }]));
     const entry = {
       update: { name: base.slice(base.indexOf('projects/')) + '/products/test-product', fields: productFields },
       currentDocument: { exists: !create },
     };
-    if (!create) entry.updateMask = { fieldPaths: Object.keys(data) };
+    if (create) {
+      entry.updateTransforms = [
+        { fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' },
+        { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+      ];
+    } else {
+      entry.updateMask = { fieldPaths: Object.keys(data) };
+      entry.updateTransforms = [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }];
+    }
     const response = await fetch(base + ':commit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token(actor) },
@@ -118,7 +132,7 @@ test('shared products require approved ownership and nonnegative stock/price', a
     });
     return { status: response.status, body: await response.json() };
   }
-  const product = { name: 'Apples', category: 'Fruits', shopId: 'shop', priceMinor: 95000, stockQuantity: 25 };
+  const product = { name: 'Apples', category: 'Fruits', shopId: 'shop', priceMinor: 95000, stockQuantity: 25, isActive: true };
   await denied(productWrite('customer', product, true));
   await denied(productWrite('rejectshop', { ...product, shopId: 'rejectshop' }, true));
   await allowed(productWrite('shop', product, true));
@@ -126,5 +140,7 @@ test('shared products require approved ownership and nonnegative stock/price', a
   await denied(productWrite('shop', { shopId: 'customer' }));
   await denied(productWrite('shop', { stockQuantity: -1 }));
   await allowed(productWrite('shop', { stockQuantity: 5, priceMinor: 99000 }));
+  await allowed(productWrite('shop', { isActive: false }));
+  await denied(productWrite('shop', { isActive: true }));
 });
 

@@ -5,8 +5,15 @@ import 'dashboard_surface.dart';
 import 'summary_item_card.dart';
 
 class TodaySummaryCard extends StatelessWidget {
-  const TodaySummaryCard({super.key, required this.onViewAll});
+  const TodaySummaryCard({
+    super.key,
+    required this.onViewAll,
+    required this.newOrders,
+    required this.productsListed,
+  });
   final VoidCallback onViewAll;
+  final int newOrders;
+  final int productsListed;
   @override
   Widget build(BuildContext context) => DashboardSurface(
     child: Column(
@@ -44,23 +51,23 @@ class TodaySummaryCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        const Row(
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: SummaryItemCard(
                 icon: Icons.shopping_bag_outlined,
-                value: '12',
+                value: '$newOrders',
                 label: 'New Orders',
-                status: '+3 new',
-                showBadge: true,
+                status: newOrders == 0 ? 'Up to date' : '$newOrders new',
+                showBadge: newOrders > 0,
               ),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Expanded(
               child: SummaryItemCard(
                 icon: Icons.inventory_2_outlined,
-                value: '28',
+                value: '$productsListed',
                 label: 'Products Listed',
                 status: 'Active',
               ),

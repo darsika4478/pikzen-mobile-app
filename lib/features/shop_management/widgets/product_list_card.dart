@@ -74,6 +74,14 @@ class ProductListCard extends StatelessWidget {
                           color: AppColors.secondaryText,
                         ),
                       ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${product.category} • ${product.stockQuantity} in stock',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: AppColors.secondaryText,
+                        ),
+                      ),
                       const SizedBox(height: 5),
                       ProductStatusBadge(label: product.status),
                     ],

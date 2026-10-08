@@ -1,25 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/message_service.dart';
+import '../../../shared/widgets/order_chat_view.dart';
 import '../models/mock_order_details.dart';
-import '../models/chat_message.dart';
 import '../widgets/customer_chat_header.dart';
-import '../widgets/chat_message_bubble.dart';
-import '../widgets/message_composer.dart';
 
 class ContactCustomerScreen extends StatefulWidget {
-  const ContactCustomerScreen({super.key, required this.order});
+  const ContactCustomerScreen({super.key, required this.order, this.messages});
   final MockOrderDetails order;
+  final MessageService? messages;
   @override
   State<ContactCustomerScreen> createState() => _ContactCustomerScreenState();
 }
 
 class _ContactCustomerScreenState extends State<ContactCustomerScreen> {
-  final _input = TextEditingController();
-  final _scroll = ScrollController();
   final _composerKey = GlobalKey();
-  final _messages = List<ChatMessage>.of(initialCustomerConversation);
+
+  String get _orderId => widget.order.orderId.startsWith('#')
+      ? widget.order.orderId.substring(1)
+      : widget.order.orderId;
 
   void _preview(String message) {
     final composer =
@@ -36,38 +38,14 @@ class _ContactCustomerScreenState extends State<ContactCustomerScreen> {
       );
   }
 
-  void _send() {
-    final text = _input.text.trim();
-    if (text.isEmpty) return;
-    final now = TimeOfDay.now();
-    final hour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
-    setState(
-      () => _messages.add(
-        ChatMessage(
-          text: text,
-          time:
-              '$hour:${now.minute.toString().padLeft(2, '0')} ${now.period == DayPeriod.am ? 'AM' : 'PM'}',
-          isMerchant: true,
-        ),
-      ),
-    );
-    _input.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _input.dispose();
-    _scroll.dispose();
-    super.dispose();
+  Future<void> _call() async {
+    final phone = widget.order.customerPhone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (phone.isEmpty) {
+      _preview('Customer phone is unavailable for this order.');
+      return;
+    }
+    final launched = await launchUrl(Uri(scheme: 'tel', path: phone));
+    if (!launched && mounted) _preview('Unable to start a call to $phone.');
   }
 
   @override
@@ -88,32 +66,21 @@ class _ContactCustomerScreenState extends State<ContactCustomerScreen> {
                   } else {
                     context.goNamed(
                       'shop-order-details',
-                      pathParameters: {
-                        'orderId': widget.order.orderId.substring(1),
-                      },
+                      pathParameters: {'orderId': _orderId},
                     );
                   }
                 },
-                onCall: () => _preview('Call ${widget.order.customerName}'),
+                onCall: _call,
               ),
               Expanded(
-                child: ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                  itemCount: _messages.length + 1,
-                  itemBuilder: (context, index) => index == 0
-                      ? const ChatDateSeparator()
-                      : ChatMessageBubble(
-                          message: _messages[index - 1],
-                          initials: widget.order.initials,
-                        ),
+                child: OrderChatView(
+                  orderId: _orderId,
+                  service: widget.messages,
+                  composerKey: _composerKey,
+                  emptyText:
+                      'No messages yet. Messages you send here notify the '
+                      'customer.',
                 ),
-              ),
-              MessageComposer(
-                key: _composerKey,
-                controller: _input,
-                onSend: _send,
-                onAttach: () => _preview('Attach file'),
               ),
             ],
           ),

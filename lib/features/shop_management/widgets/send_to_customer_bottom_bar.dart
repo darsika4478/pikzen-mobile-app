@@ -4,7 +4,7 @@ import '../../../core/constants/app_colors.dart';
 
 class SendToCustomerBottomBar extends StatelessWidget {
   const SendToCustomerBottomBar({super.key, required this.onSend});
-  final VoidCallback onSend;
+  final VoidCallback? onSend;
   @override
   Widget build(BuildContext context) => Container(
     decoration: const BoxDecoration(

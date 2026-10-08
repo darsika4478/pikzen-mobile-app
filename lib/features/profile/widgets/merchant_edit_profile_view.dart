@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/firestore_service.dart';
 import '../../shop_management/widgets/product_form_controls.dart';
 
-/// Local form state, discarded when the merchant editor is closed.
 class MerchantEditProfileView extends StatefulWidget {
-  const MerchantEditProfileView({super.key});
+  const MerchantEditProfileView({super.key, this.service});
+  final FirestoreService? service;
   @override
   State<MerchantEditProfileView> createState() =>
       _MerchantEditProfileViewState();
@@ -14,12 +15,41 @@ class MerchantEditProfileView extends StatefulWidget {
 
 class _MerchantEditProfileViewState extends State<MerchantEditProfileView> {
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController(text: 'GreenMart');
-  final _phone = TextEditingController(text: '012-345 6789');
-  final _email = TextEditingController(text: 'contact@greenmart.my');
-  final _address = TextEditingController(
-    text: 'No. 12, Main Street, Central Plaza',
-  );
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  final _email = TextEditingController();
+  final _address = TextEditingController();
+  late final FirestoreService _service = widget.service ?? FirestoreService();
+  bool _loading = true;
+  bool _saving = false;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await _service.approvedShopProfile().first;
+      if (!mounted) return;
+      setState(() {
+        _name.text = (data['shopName'] ?? data['fullName'] ?? '').toString();
+        _phone.text = (data['phone'] ?? '').toString();
+        _email.text = (data['email'] ?? '').toString();
+        _address.text = (data['storeAddress'] ?? '').toString();
+        _loading = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadError = error.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -45,10 +75,23 @@ class _MerchantEditProfileViewState extends State<MerchantEditProfileView> {
     }
   }
 
-  void _save() {
+  Future<void> _save() async {
     FocusScope.of(context).unfocus();
-    if (_formKey.currentState!.validate()) {
+    if (!_formKey.currentState!.validate() || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await _service.updateShopProfile(
+        phone: _phone.text,
+        shopName: _name.text,
+        storeAddress: _address.text,
+      );
+      if (!mounted) return;
       _message('Profile changes saved');
+      context.goNamed('shop-profile');
+    } catch (error) {
+      if (mounted) _message('Profile could not be saved: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -59,6 +102,7 @@ class _MerchantEditProfileViewState extends State<MerchantEditProfileView> {
     TextInputType? keyboard,
     int lines = 1,
     bool email = false,
+    bool readOnly = false,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 14),
     child: Column(
@@ -75,6 +119,7 @@ class _MerchantEditProfileViewState extends State<MerchantEditProfileView> {
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
+          readOnly: readOnly,
           keyboardType: keyboard,
           maxLines: lines,
           textInputAction: lines > 1
@@ -148,72 +193,87 @@ class _MerchantEditProfileViewState extends State<MerchantEditProfileView> {
                   ],
                 ),
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        StorePhotoEditor(
-                          onChange: () => _message('Change store photo'),
-                        ),
-                        const SizedBox(height: 20),
-                        _field('SHOP NAME', _name, 'Shop name is required'),
-                        _field(
-                          'PHONE NUMBER',
-                          _phone,
-                          'Phone number is required',
-                          keyboard: TextInputType.phone,
-                        ),
-                        _field(
-                          'EMAIL ADDRESS',
-                          _email,
-                          'Email address is required',
-                          keyboard: TextInputType.emailAddress,
-                          email: true,
-                        ),
-                        _field(
-                          'STORE ADDRESS',
-                          _address,
-                          'Store address is required',
-                          keyboard: TextInputType.multiline,
-                          lines: 3,
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
+              if (_loadError != null)
+                Expanded(
+                  child: Center(
+                    child: Text('Unable to load shop profile: $_loadError'),
                   ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.surface,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                    ),
-                    child: const Text(
-                      'Save Changes',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                )
+              else if (_loading)
+                const Expanded(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                Expanded(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          StorePhotoEditor(
+                            onChange: () => _message(
+                              'Store photo upload is not available yet.',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          _field('SHOP NAME', _name, 'Shop name is required'),
+                          _field(
+                            'PHONE NUMBER',
+                            _phone,
+                            'Phone number is required',
+                            keyboard: TextInputType.phone,
+                          ),
+                          _field(
+                            'EMAIL ADDRESS',
+                            _email,
+                            'Email address is required',
+                            keyboard: TextInputType.emailAddress,
+                            email: true,
+                            readOnly: true,
+                          ),
+                          _field(
+                            'STORE ADDRESS',
+                            _address,
+                            'Store address is required',
+                            keyboard: TextInputType.multiline,
+                            lines: 3,
+                          ),
+                          const SizedBox(height: 24),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ),
+              if (!_loading && _loadError == null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _saving ? null : _save,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.surface,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? 'Saving...' : 'Save Changes',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
