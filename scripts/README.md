@@ -87,7 +87,7 @@ reruns reset them. Existing accounts keep their passwords.
 | Role | Email |
 | --- | --- |
 | Customer | `demo.customer@pikzen.test` |
-| Approved shop | `demo.shop@pikzen.test` (PikZen Demo Mart) |
+| Approved shop | `demo.shop@pikzen.test` (Colombo Express Hub) |
 | Pending shop | `demo.pending@pikzen.test` (for the admin approval demo) |
 | Admin | `demo.admin@pikzen.test` |
 

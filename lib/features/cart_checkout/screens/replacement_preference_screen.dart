@@ -32,7 +32,10 @@ class ReplacementPreferenceScreen extends StatelessWidget {
     final checkout = context.watch<CheckoutProvider>();
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const CheckoutHeader(),
+      appBar: CheckoutHeader(
+        onBack: () =>
+            context.canPop() ? context.pop() : context.goNamed('checkout'),
+      ),
       body: SafeArea(
         top: false,
         child: Column(
@@ -65,20 +68,10 @@ class ReplacementPreferenceScreen extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
               child: CheckoutAction(
                 label: 'Next',
                 onPressed: () => _next(context),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(28, 0, 28, 18),
-              child: CheckoutAction(
-                label: 'Back',
-                secondary: true,
-                onPressed: () => context.canPop()
-                    ? context.pop()
-                    : context.goNamed('checkout'),
               ),
             ),
           ],

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../cart_checkout/widgets/cart_badge.dart';
@@ -41,15 +40,6 @@ class CustomerHomeScreen extends StatelessWidget {
             tooltip: 'Notifications',
             onPressed: () => context.pushNamed('notifications'),
             icon: const Icon(Icons.notifications_none),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Image.asset(
-              AppAssets.logo,
-              width: 32,
-              height: 32,
-              fit: BoxFit.cover,
-            ),
           ),
         ],
       ),
@@ -137,33 +127,53 @@ class CustomerHomeScreen extends StatelessWidget {
                           style: TextStyle(color: Colors.white, fontSize: 11),
                         ),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 20,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            const Text(
-                              'HARVEST20',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
+                        // Code left, button right; stacks on very narrow phones.
+                        SizedBox(
+                          width: double.infinity,
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            runSpacing: 10,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: .14),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: .45),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'HARVEST20',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
                               ),
-                            ),
-                            FilledButton(
-                              onPressed: () => ScaffoldMessenger.of(context)
-                                  .showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Offer preview. Promotional checkout is not available yet.',
+                              FilledButton(
+                                onPressed: () => ScaffoldMessenger.of(context)
+                                    .showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Offer preview. Promotional checkout is not available yet.',
+                                        ),
                                       ),
                                     ),
-                                  ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.accent,
-                                foregroundColor: Colors.white,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppColors.accent,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Claim Deal →'),
                               ),
-                              child: const Text('Claim Deal →'),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),

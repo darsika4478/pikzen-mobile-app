@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../models/mock_inventory_item.dart';
-import '../models/mock_shop_product.dart';
 import 'product_list_card.dart';
+import 'shop_product_thumb.dart';
 
 class InventoryProductCard extends StatelessWidget {
   const InventoryProductCard({
@@ -30,24 +30,6 @@ class InventoryProductCard extends StatelessWidget {
         : warning
         ? AppColors.warning
         : AppColors.primary;
-    final (asset, emoji, tint) = switch (item.product.visualType) {
-      ShopProductVisual.apple => (
-        'assets/images/Apples Product.png',
-        '🍎',
-        AppColors.rejectBackground,
-      ),
-      ShopProductVisual.banana => (null, '🍌', AppColors.bananaBackground),
-      ShopProductVisual.milk => (
-        'assets/images/Milk Product.png',
-        '🥛',
-        AppColors.milkBackground,
-      ),
-      ShopProductVisual.bread => (
-        'assets/images/Roast bun.png',
-        '🍞',
-        AppColors.lightOrange,
-      ),
-    };
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -83,21 +65,7 @@ class InventoryProductCard extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
-              Container(
-                width: 46,
-                height: 46,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: tint,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: asset == null
-                    ? Text(emoji, style: const TextStyle(fontSize: 27))
-                    : Padding(
-                        padding: const EdgeInsets.all(5),
-                        child: Image.asset(asset, fit: BoxFit.contain),
-                      ),
-              ),
+              ShopProductThumb(product: item.product, size: 48),
               const SizedBox(width: 9),
               Expanded(
                 child: Column(

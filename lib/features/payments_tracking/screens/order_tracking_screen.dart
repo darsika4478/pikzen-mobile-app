@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/order_service.dart';
 import '../../../models/order_model.dart';
+import '../../../shared/widgets/animations.dart';
 
 /// Customer-facing tracking view for the currently selected order.
 ///
@@ -351,20 +352,25 @@ class _StatusTimeline extends StatelessWidget {
       child: Column(
         children: [
           for (var index = 0; index < _stages.length; index++)
-            _TimelineStage(
-              label: _stages[index],
-              timestamp:
-                  timestamps[index] == null ||
-                      !(index <= currentIndex || (status == null && index == 0))
-                  ? null
-                  : _formatTimestamp(context, timestamps[index]!),
-              completed:
-                  index < currentIndex ||
-                  (status == null && index == 0 && order != null),
-              current: index == currentIndex,
-              connectorCompleted: index < currentIndex,
-              isLast: index == _stages.length - 1,
-              textTheme: textTheme,
+            FadeSlideIn(
+              index: index,
+              offset: const Offset(-.06, 0),
+              child: _TimelineStage(
+                label: _stages[index],
+                timestamp:
+                    timestamps[index] == null ||
+                        !(index <= currentIndex ||
+                            (status == null && index == 0))
+                    ? null
+                    : _formatTimestamp(context, timestamps[index]!),
+                completed:
+                    index < currentIndex ||
+                    (status == null && index == 0 && order != null),
+                current: index == currentIndex,
+                connectorCompleted: index < currentIndex,
+                isLast: index == _stages.length - 1,
+                textTheme: textTheme,
+              ),
             ),
           Padding(
             padding: const EdgeInsets.only(left: 44, bottom: 15),

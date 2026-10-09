@@ -242,22 +242,16 @@ void main() {
     expect(find.text('Member since 2023'), findsNothing);
     expect(find.text('Default Hub'), findsNothing);
     expect(find.text('SMS Alerts Enabled'), findsNothing);
+    // Photo editing is available; with no custom photo it offers "Add".
     expect(
       tester
           .widget<IconButton>(
             find.widgetWithIcon(IconButton, Icons.camera_alt_outlined),
           )
           .onPressed,
-      isNull,
+      isNotNull,
     );
-    expect(
-      tester
-          .widget<IconButton>(
-            find.widgetWithIcon(IconButton, Icons.delete_outline),
-          )
-          .onPressed,
-      isNull,
-    );
+    expect(find.text('Add Photo'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

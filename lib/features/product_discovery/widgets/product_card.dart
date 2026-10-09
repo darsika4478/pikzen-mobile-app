@@ -6,7 +6,9 @@ import '../../../core/constants/app_colors.dart';
 import '../../../models/product_model.dart';
 import '../../cart_checkout/providers/cart_provider.dart';
 import '../providers/product_provider.dart';
+import '../../cart_checkout/widgets/add_to_cart.dart';
 import 'discovery_ui.dart';
+import '../../../shared/widgets/animations.dart';
 
 class ProductCard extends StatelessWidget {
   const ProductCard({super.key, required this.product});
@@ -35,6 +37,7 @@ class ProductCard extends StatelessWidget {
                       product,
                       width: double.infinity,
                       height: 128,
+                      hero: true,
                     ),
                   ),
                   Positioned(
@@ -163,16 +166,7 @@ class QuantityControl extends StatelessWidget {
           ),
           onPressed: product.stock == StockStatus.outOfStock
               ? null
-              : () {
-                  if (cart.add(product)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${product.name} added to cart'),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                  }
-                },
+              : () => addToCart(context, product),
           child: Text(addLabel, style: const TextStyle(fontSize: 12)),
         ),
       );
@@ -235,7 +229,11 @@ class ProductGrid extends StatelessWidget {
           crossAxisSpacing: 12,
         ),
         itemCount: products.length,
-        itemBuilder: (_, index) => ProductCard(product: products[index]),
+        itemBuilder: (_, index) => FadeSlideIn(
+          key: ValueKey(products[index].id),
+          index: index,
+          child: ProductCard(product: products[index]),
+        ),
       ),
     );
   }

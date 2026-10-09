@@ -9,8 +9,11 @@ import '../widgets/dashboard_bottom_nav.dart';
 import '../widgets/inventory_product_card.dart';
 
 class InventoryStockScreen extends StatefulWidget {
-  const InventoryStockScreen({super.key, this.service});
+  const InventoryStockScreen({super.key, this.service, this.initialFilter = 0});
   final FirestoreService? service;
+
+  /// 0 = all items, 1 = low stock, 2 = out of stock.
+  final int initialFilter;
   @override
   State<InventoryStockScreen> createState() => _InventoryStockScreenState();
 }
@@ -22,7 +25,7 @@ class _InventoryStockScreenState extends State<InventoryStockScreen> {
   final _pending = <String, int>{};
   bool _saving = false;
   String _search = '';
-  int _filter = 0;
+  late int _filter = widget.initialFilter;
   bool _batch = false;
   Future<void> _save() async {
     if (_saving || _pending.isEmpty) return;
@@ -127,7 +130,7 @@ class _InventoryStockScreenState extends State<InventoryStockScreen> {
             child: Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
+                constraints: const BoxConstraints(maxWidth: 640),
                 child: Column(
                   children: [
                     SizedBox(

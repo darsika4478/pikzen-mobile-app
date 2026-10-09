@@ -8,6 +8,7 @@ import '../../../models/cart_item_model.dart';
 import '../../../models/order_model.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../cart_checkout/widgets/checkout_ui.dart';
+import '../../../shared/widgets/animations.dart';
 
 class CustomerOrderDetailsScreen extends StatefulWidget {
   const CustomerOrderDetailsScreen({
@@ -34,6 +35,27 @@ class _CustomerOrderDetailsScreenState
   late final OrderService _orders = widget.orderService ?? OrderService();
   Stream<OrderModel?>? _stream;
   bool _recorded = false;
+  bool _checkingIn = false;
+
+  Future<void> _checkIn(OrderModel order) async {
+    if (_checkingIn) return;
+    setState(() => _checkingIn = true);
+    try {
+      await _orders.checkIn(order.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The shop has been told you are here.')),
+        );
+      }
+    } on OrderActionException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _checkingIn = false);
+    }
+  }
 
   @override
   void initState() {
@@ -88,12 +110,6 @@ class _CustomerOrderDetailsScreenState
           icon: const Icon(Icons.arrow_back),
         ),
         title: const Text('Order Details'),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(Icons.eco_outlined, color: AppColors.primary),
-          ),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -201,6 +217,21 @@ class _CustomerOrderDetailsScreenState
                       ),
                       const SizedBox(height: 16),
                       _DateTimeCard(order: selectedOrder),
+                      if (selectedOrder.pickupCode != null &&
+                          !const {
+                            'cancelled',
+                            'collected',
+                            'completed',
+                          }.contains(selectedOrder.status)) ...[
+                        const SizedBox(height: 14),
+                        FadeSlideIn(
+                          child: _PickupPassCard(
+                            order: selectedOrder,
+                            checkingIn: _checkingIn,
+                            onArrived: () => _checkIn(selectedOrder),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 18),
                       Text(
                         'ITEMS (${selectedOrder.items.length})',
@@ -273,6 +304,78 @@ class _CustomerOrderDetailsScreenState
     final trimmedId = id.trim();
     if (trimmedId.isEmpty) return 'Order ID unavailable';
     return trimmedId.startsWith('#') ? trimmedId : '#$trimmedId';
+  }
+}
+
+/// Pickup pass: the handover code plus the "I've arrived" check-in.
+class _PickupPassCard extends StatelessWidget {
+  const _PickupPassCard({
+    required this.order,
+    required this.checkingIn,
+    required this.onArrived,
+  });
+
+  final OrderModel order;
+  final bool checkingIn;
+  final VoidCallback onArrived;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final arrived = order.arrivedAt != null;
+    final canCheckIn = OrderService.canCheckIn(order.status);
+    return _SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'PICKUP CODE',
+            style: textTheme.labelMedium?.copyWith(
+              color: AppColors.secondaryText,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            order.pickupCode!.split('').join(' '),
+            key: const Key('pickupCode'),
+            style: textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: 4,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Show this code to the shop when you collect your order.',
+            style: textTheme.bodySmall?.copyWith(
+              color: AppColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (arrived)
+            const Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text('Checked in. The shop knows you are here.'),
+                ),
+              ],
+            )
+          else
+            FilledButton.icon(
+              onPressed: canCheckIn && !checkingIn ? onArrived : null,
+              icon: const Icon(Icons.directions_walk_rounded, size: 18),
+              label: Text(
+                canCheckIn
+                    ? "I've Arrived"
+                    : 'Check in after the shop accepts your order',
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
 import 'dashboard_surface.dart';
+import '../models/shop_insights.dart';
 import 'store_status_badge.dart';
 
 class DashboardHeader extends StatelessWidget {
@@ -10,10 +11,14 @@ class DashboardHeader extends StatelessWidget {
     required this.onNotifications,
     required this.onShop,
     required this.shopName,
+    this.alertCount = 0,
   });
   final VoidCallback onNotifications;
   final VoidCallback onShop;
   final String shopName;
+
+  /// Shows a dot on the bell when anything needs attention.
+  final int alertCount;
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,9 +79,28 @@ class DashboardHeader extends StatelessWidget {
               children: [
                 IconButton(
                   onPressed: onNotifications,
-                  tooltip: 'Notifications',
+                  tooltip: alertCount == 0
+                      ? 'Notifications'
+                      : 'Notifications, $alertCount new',
                   icon: const Icon(Icons.notifications_none_rounded, size: 23),
                 ),
+                if (alertCount > 0)
+                  Positioned(
+                    right: 10,
+                    top: 10,
+                    child: Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -91,9 +115,9 @@ class DashboardHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Good Morning!',
-                  style: TextStyle(
+                Text(
+                  greetingFor(DateTime.now()),
+                  style: const TextStyle(
                     fontSize: 27,
                     height: 1.2,
                     letterSpacing: -.8,
@@ -102,7 +126,7 @@ class DashboardHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '$shopName • ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+                  '$shopName • ${formatShopDay(DateTime.now())}',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.secondaryText,
@@ -114,7 +138,7 @@ class DashboardHeader extends StatelessWidget {
           const SizedBox(width: 8),
           IconButton(
             onPressed: onShop,
-            tooltip: 'Store status',
+            tooltip: 'Store profile',
             style: IconButton.styleFrom(
               backgroundColor: AppColors.softGreen,
               foregroundColor: AppColors.primary,

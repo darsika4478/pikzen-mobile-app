@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/order_service.dart';
@@ -285,12 +284,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: const Icon(Icons.arrow_back),
         ),
         title: const Text('Settings'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Image.asset(AppAssets.logo, width: 32, height: 32),
-          ),
-        ],
       ),
       body: SafeArea(
         top: false,

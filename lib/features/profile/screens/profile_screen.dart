@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/order_service.dart';
@@ -13,6 +12,7 @@ import '../../../models/user_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../product_discovery/providers/product_provider.dart';
 import '../widgets/merchant_profile_view.dart';
+import '../../../shared/widgets/profile_photo.dart';
 
 /// Customer overview backed by the app's existing account, catalog and orders.
 class ProfileScreen extends StatefulWidget {
@@ -147,15 +147,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             tooltip: 'Notifications',
             onPressed: () => context.pushNamed('notifications'),
             icon: const Icon(Icons.notifications_none),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Image.asset(
-              AppAssets.logo,
-              width: 32,
-              height: 32,
-              fit: BoxFit.cover,
-            ),
           ),
         ],
       ),
@@ -523,13 +514,7 @@ class _ProfileIdentity extends StatelessWidget {
               width: 64,
               height: 64,
               color: AppColors.softGreen,
-              child: photoUrl.isEmpty
-                  ? fallback
-                  : Image.network(
-                      photoUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => fallback,
-                    ),
+              child: ProfilePhoto(source: photoUrl, fallback: fallback),
             ),
           ),
           const SizedBox(width: 14),

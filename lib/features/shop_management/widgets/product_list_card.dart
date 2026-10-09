@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../models/mock_shop_product.dart';
+import 'shop_product_thumb.dart';
 
 class ProductListCard extends StatelessWidget {
   const ProductListCard({
@@ -13,12 +14,6 @@ class ProductListCard extends StatelessWidget {
   final VoidCallback onSelected;
   @override
   Widget build(BuildContext context) {
-    final (visual, tint) = switch (product.visualType) {
-      ShopProductVisual.apple => ('🍎', AppColors.rejectBackground),
-      ShopProductVisual.banana => ('🍌', AppColors.bananaBackground),
-      ShopProductVisual.milk => ('🥛', AppColors.milkBackground),
-      ShopProductVisual.bread => ('🍞', AppColors.lightOrange),
-    };
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -42,18 +37,7 @@ class ProductListCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: tint,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: ExcludeSemantics(
-                    child: Text(visual, style: const TextStyle(fontSize: 28)),
-                  ),
-                ),
+                ShopProductThumb(product: product, size: 52),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

@@ -8,6 +8,7 @@ import 'package:pikzen/features/cart_checkout/providers/cart_provider.dart';
 import 'package:pikzen/features/shop_management/models/availability_item.dart';
 import 'package:pikzen/features/shop_management/models/mock_inventory_item.dart';
 import 'package:pikzen/features/shop_management/models/mock_order_details.dart';
+import 'package:pikzen/features/shop_management/models/shop_insights.dart';
 import 'package:pikzen/features/shop_management/screens/shop_dashboard_screen.dart';
 import 'package:pikzen/features/shop_management/screens/product_management_screen.dart';
 import 'package:pikzen/features/shop_management/screens/inventory_stock_screen.dart';
@@ -214,9 +215,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('My Shop •'), findsOneWidget);
     expect(find.text('1'), findsNWidgets(2));
-    expect(find.text('0 items require attention'), findsOneWidget);
-    expect(find.text('Check incoming orders'), findsOneWidget);
+    expect(find.text('All items well stocked'), findsOneWidget);
+    expect(find.text('Review 1 new order'), findsOneWidget);
+    expect(find.text('Respond to customer queries'), findsOneWidget);
+    expect(find.text('View Stats'), findsOneWidget);
     expect(find.text('GreenMart • Tue, 12 Dec 2024'), findsNothing);
+    expect(
+      find.textContaining('My Shop • ${formatShopDay(DateTime.now())}'),
+      findsOneWidget,
+    );
   });
 
   for (final width in [360.0, 430.0]) {
@@ -234,7 +241,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Good Morning!'), findsOneWidget);
+      expect(find.text(greetingFor(DateTime.now())), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

@@ -32,8 +32,11 @@ void main() {
     draft.setPickupDate(DateTime(2026, 9, 13), now: now);
     draft.setPickupTime(DateTime(2026, 9, 13, 10), now: now);
     expect(draft.pickupTime, isNull);
+    // 11:30 is only 15 minutes away: inside the 30-minute preparation time.
     draft.setPickupTime(DateTime(2026, 9, 13, 11, 30), now: now);
-    expect(draft.pickupTime, DateTime(2026, 9, 13, 11, 30));
+    expect(draft.pickupTime, isNull);
+    draft.setPickupTime(DateTime(2026, 9, 13, 12), now: now);
+    expect(draft.pickupTime, DateTime(2026, 9, 13, 12));
     draft.bindUser('another-customer');
     expect(draft.pickupDate, isNull);
   });

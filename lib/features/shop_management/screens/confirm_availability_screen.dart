@@ -37,16 +37,15 @@ class _ConfirmAvailabilityScreenState extends State<ConfirmAvailabilityScreen> {
     try {
       final latest = await _products.currentProducts();
       final byId = {for (final product in latest) product.id: product};
+      // Quantities were reserved when the customer paid; only a product the
+      // shop has since removed blocks acceptance. Legacy unreserved orders
+      // are stock-checked inside OrderService.updateOrderStatus.
       final unavailable = widget.order.items
-          .where(
-            (item) =>
-                byId[item.productId] == null ||
-                byId[item.productId]!.stockQuantity < item.quantity,
-          )
+          .where((item) => byId[item.productId] == null)
           .toList();
       if (unavailable.isNotEmpty) {
         throw OrderActionException(
-          '${unavailable.first.name} is unavailable in the requested quantity.',
+          '${unavailable.first.name} is no longer listed by your shop.',
         );
       }
       await _orders.updateOrderStatus(
@@ -88,7 +87,7 @@ class _ConfirmAvailabilityScreenState extends State<ConfirmAvailabilityScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
+          constraints: const BoxConstraints(maxWidth: 640),
           child: Column(
             children: [
               ConfirmAvailabilityHeader(
@@ -125,23 +124,6 @@ class _ConfirmAvailabilityScreenState extends State<ConfirmAvailabilityScreen> {
                                     fontWeight: FontWeight.w600,
                                     letterSpacing: .4,
                                     color: AppColors.secondaryText,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 9,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.softGreen,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Text(
-                                  'Variant B: Status',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: AppColors.primary,
                                   ),
                                 ),
                               ),

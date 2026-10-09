@@ -10,6 +10,8 @@ class UserModel {
     this.approvalStatus,
     this.createdAt,
     this.accountStatus,
+    this.shopName,
+    this.photoUrl,
   });
   final String id;
   final String name;
@@ -19,6 +21,31 @@ class UserModel {
   final String? approvalStatus;
   final DateTime? createdAt;
   final String? accountStatus;
+  final String? shopName;
+  final String? photoUrl;
+
+  /// Accounts without an explicit status are active.
+  bool get isSuspended => accountStatus == 'suspended';
+
+  UserModel copyWith({
+    String? role,
+    String? approvalStatus,
+    bool clearApproval = false,
+    String? accountStatus,
+  }) => UserModel(
+    id: id,
+    name: name,
+    email: email,
+    phoneNumber: phoneNumber,
+    role: role ?? this.role,
+    approvalStatus: clearApproval
+        ? null
+        : approvalStatus ?? this.approvalStatus,
+    createdAt: createdAt,
+    accountStatus: accountStatus ?? this.accountStatus,
+    shopName: shopName,
+    photoUrl: photoUrl,
+  );
   bool get isApprovedShop => role == 'shop' && approvalStatus == 'approved';
 
   factory UserModel.fromMap(String id, Map<String, dynamic> data) => UserModel(
@@ -32,6 +59,8 @@ class UserModel {
     accountStatus: data['accountStatus'] is String
         ? data['accountStatus'] as String
         : null,
+    shopName: data['shopName'] is String ? data['shopName'] as String : null,
+    photoUrl: data['photoUrl'] is String ? data['photoUrl'] as String : null,
     createdAt: data['createdAt'] is Timestamp
         ? (data['createdAt'] as Timestamp).toDate()
         : data['createdAt'] is DateTime

@@ -25,6 +25,9 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     _email.addListener(_changed);
     _password.addListener(_changed);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AuthProvider>().clearError();
+    });
   }
 
   void _changed() => setState(() {});
@@ -49,10 +52,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     return AuthPage(
+      centered: true,
       child: Column(
         children: [
+          const SizedBox(height: 8),
           const AuthLogo(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           const AuthBadge('Fresh \u2022 Fast \u2022 Pick Up Ready'),
           const SizedBox(height: 12),
           Text(
@@ -66,17 +71,18 @@ class _LoginScreenState extends State<LoginScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.secondaryText),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.border),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: .06),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
+                  color: AppColors.primary.withValues(alpha: .06),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
@@ -99,37 +105,62 @@ class _LoginScreenState extends State<LoginScreen> {
                     secret: true,
                     onSubmitted: _valid && !auth.busy ? _submit : null,
                   ),
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    children: [
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Checkbox(
-                            value: auth.rememberMe,
-                            onChanged: auth.busy
-                                ? null
-                                : (value) => auth.setRemember(value ?? false),
+                  // One line normally; wraps onto two with very large text.
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: auth.busy
+                              ? null
+                              : () => auth.setRemember(!auth.rememberMe),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: Checkbox(
+                                  value: auth.rememberMe,
+                                  onChanged: auth.busy
+                                      ? null
+                                      : (value) =>
+                                            auth.setRemember(value ?? false),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Flexible(
+                                child: Text(
+                                  'Remember me',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                           ),
-                          const Text(
-                            'Remember me',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      TextButton(
-                        onPressed: auth.busy
-                            ? null
-                            : () => context.pushNamed('forgot-password'),
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(fontSize: 12),
                         ),
-                      ),
-                    ],
+                        TextButton(
+                          onPressed: auth.busy
+                              ? null
+                              : () => context.pushNamed('forgot-password'),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                          ),
+                          child: const Text(
+                            'Forgot Password?',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 12),
                   AuthError(auth.error),
                   AuthAction(
                     label: 'Sign In',
@@ -141,22 +172,27 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const Row(
+          Row(
             children: [
-              Expanded(child: Divider()),
-              Flexible(
-                child: Padding(
+              const Expanded(child: Divider()),
+              // Not flexible, so both lines get equal space and the label is
+              // centred; the width cap makes it wrap at very large text sizes.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 200),
+                child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
                     'OR CONTINUE WITH',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 10,
+                      letterSpacing: .6,
                       color: AppColors.secondaryText,
                     ),
                   ),
                 ),
               ),
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
             ],
           ),
           const SizedBox(height: 14),
@@ -165,9 +201,13 @@ class _LoginScreenState extends State<LoginScreen> {
             child: OutlinedButton(
               onPressed: auth.busy ? null : () => _submit(google: true),
               style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
                 backgroundColor: Colors.white,
                 foregroundColor: AppColors.primaryText,
-                side: BorderSide.none,
+                side: const BorderSide(color: AppColors.border),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,

@@ -144,6 +144,43 @@ class OrderService {
             : null,
       );
 
+  /// Customer "I've arrived" check-in so the shop can bring the order out.
+  Future<void> checkIn(String orderId) async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) {
+      throw const OrderActionException('Sign in to check in for pickup.');
+    }
+    final ref = _orders.doc(orderId);
+    try {
+      await database.runTransaction((transaction) async {
+        final snapshot = await transaction.get(ref);
+        final data = snapshot.data();
+        if (data == null || data['customerId'] != uid) {
+          throw const OrderActionException('This order is unavailable.');
+        }
+        if (data['arrivedAt'] != null) return;
+        if (!canCheckIn(data['status'] as String?)) {
+          throw const OrderActionException(
+            'Check in once the shop has accepted your order.',
+          );
+        }
+        transaction.update(ref, {'arrivedAt': FieldValue.serverTimestamp()});
+      });
+    } on OrderActionException {
+      rethrow;
+    } catch (_) {
+      throw const OrderActionException(
+        'Unable to check in right now. Please tell the shop staff.',
+      );
+    }
+  }
+
+  static bool canCheckIn(String? status) => const {
+    'accepted',
+    'preparing',
+    'ready',
+  }.contains(status?.trim().toLowerCase());
+
   Future<void> markCustomerView(String orderId, String field) async {
     if (!const {
       'paymentSuccessViewedAt',
@@ -327,6 +364,10 @@ class OrderService {
         if (profile['phone'] is String?) {
           data['customerPhone'] = profile['phone'];
         }
+        data['pickupCode'] = Random.secure()
+            .nextInt(10000)
+            .toString()
+            .padLeft(4, '0');
         data['subtotalMinor'] = totalMinor;
         data['stockReserved'] = true;
         data['stockRestored'] = false;

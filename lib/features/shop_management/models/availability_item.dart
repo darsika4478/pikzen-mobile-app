@@ -24,10 +24,10 @@ class AvailabilityItem {
     name: item.name,
     quantity: item.quantity,
     price: formatPaymentAmount(item.unitPriceMinor, 'LKR'),
-    isAvailable:
-        current != null &&
-        current.isActive &&
-        current.stockQuantity >= item.quantity,
+    // Stock for this order was already reserved at checkout, so the shop's
+    // remaining stock may legitimately be zero. Only a removed or
+    // deactivated product makes the item unavailable.
+    isAvailable: current != null && current.isActive,
     visualType: item.type,
   );
 }

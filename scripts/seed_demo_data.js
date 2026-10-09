@@ -8,18 +8,18 @@ const { Writable } = require('node:stream');
 
 class SeedError extends Error {}
 
-const SHOP_NAME = 'PikZen Demo Mart';
+const SHOP_NAME = 'Colombo Express Hub';
 
 const ACCOUNTS = [
   { key: 'customer', email: 'demo.customer@pikzen.test', fullName: 'Demo Customer', phone: '+94770000001', role: 'customer' },
-  { key: 'shop', email: 'demo.shop@pikzen.test', fullName: 'Demo Shop Owner', phone: '+94770000002', role: 'shop', approvalStatus: 'approved', shopName: SHOP_NAME, storeAddress: '12 Campus Road, Colombo 07' },
+  { key: 'shop', email: 'demo.shop@pikzen.test', fullName: 'Demo Shop Owner', phone: '+94770000002', role: 'shop', approvalStatus: 'approved', shopName: SHOP_NAME, storeAddress: 'Bay 04, 21 Galle Road, Colombo 03' },
   { key: 'pendingShop', email: 'demo.pending@pikzen.test', fullName: 'Pending Shop Owner', phone: '+94770000003', role: 'shop', approvalStatus: 'pending' },
   { key: 'admin', email: 'demo.admin@pikzen.test', fullName: 'Demo Administrator', phone: '', role: 'admin' },
 ];
 
 // [id, name, category, priceMinor (LKR cents), stock, unit, image, description]
 const PRODUCTS = [
-  ['demo-red-apples', 'Royal Red Apples', 'Fruits', 95000, 40, '1kg', 'Royal redapple.png', 'Crisp Royal Gala apples.'],
+  ['demo-red-apples', 'Royal Gala Red Apples', 'Fruits', 95000, 40, '1kg bag', 'Royal redapple.png', 'Naturally sweet, crisp, and freshly picked highland red apples. Hand-sorted and packed in eco-friendly paper bags for easy pickup. Perfect for healthy snacking, crisp salads, or artisanal baking.'],
   ['demo-green-apples', 'Green Apples', 'Fruits', 110000, 25, '1kg', 'Greeny apple.png', 'Tart Granny Smith apples.'],
   ['demo-organic-apples', 'Organic Apples', 'Fruits', 135000, 4, '1kg', 'Organic apple.png', 'Certified organic apples (low stock demo).'],
   ['demo-carrots', 'Fresh Carrots', 'Vegetables', 32000, 60, '500g', 'Carrot.png', 'Nuwara Eliya carrots.'],
@@ -77,11 +77,44 @@ function profileFor(account, uid, now) {
   return profile;
 }
 
-function productDoc([, name, category, priceMinor, stockQuantity, unit, image, description], shopId, now) {
+// Detail-page fields per product: brand, origin, storage, packaging, dietary,
+// harvestLabel, readiness, rating and isOrganic. All fictional demo values.
+const fresh = (brand, origin, harvestLabel, rating, extra = {}) => ({
+  brand, origin, harvestLabel, rating, storage: 'Refrigerate at 4°C',
+  packaging: '100% Recyclable Bag', dietary: 'Vegan & Gluten-free',
+  readiness: 'Ready in 20 mins', ...extra,
+});
+const packed = (brand, origin, storage, packaging, dietary, rating, readiness = 'Ready in 15 mins') => ({
+  brand, origin, storage, packaging, dietary, rating, readiness,
+});
+const DETAILS = {
+  'demo-red-apples': fresh('Highland Harvest', 'Nuwara Eliya Fresh Orchards', 'Harvested 12 hrs ago', 4.9, { isOrganic: true, dietary: 'Organic & Pure' }),
+  'demo-green-apples': fresh('Highland Harvest', 'Bandarawela Hill Orchards', 'Harvested 1 day ago', 4.7),
+  'demo-organic-apples': fresh('Green Valley Organics', 'Welimada Organic Farms', 'Harvested 8 hrs ago', 4.8, { isOrganic: true, dietary: 'Certified Organic' }),
+  'demo-carrots': fresh('Upcountry Fields', 'Nuwara Eliya Highland Farms', 'Harvested 10 hrs ago', 4.8),
+  'demo-leeks': fresh('Upcountry Fields', 'Kandapola Vegetable Farms', 'Harvested 14 hrs ago', 4.6),
+  'demo-tomatoes': fresh('Sunrise Growers', 'Dambulla Farm Co-op', 'Harvested 1 day ago', 4.5),
+  'demo-whole-milk': packed('Lanka Dairy Co.', 'Ambewela Dairy Farms', 'Refrigerate at 4°C', 'Recyclable Bottle', 'Vegetarian', 4.8, 'Ready in 10 mins'),
+  'demo-cheese': packed('Lanka Dairy Co.', 'Ambewela Creamery', 'Refrigerate at 4°C', 'Vacuum Sealed', 'Vegetarian', 4.6),
+  'demo-eggs': packed('Golden Coop', 'Kurunegala Free-range Farms', 'Cool & Dry', 'Paper Egg Tray', 'High Protein', 4.7, 'Ready in 10 mins'),
+  'demo-roast-bun': packed('Colombo Bake House', 'Baked in-store daily', 'Room Temperature', 'Paper Bag', 'Vegetarian', 4.6, 'Fresh from 7 AM'),
+  'demo-chicken-puff': packed('Colombo Bake House', 'Baked in-store daily', 'Room Temperature', 'Paper Box', 'Contains Chicken', 4.5, 'Fresh from 7 AM'),
+  'demo-orange-juice': packed('Tropical Press', 'Hambantota Citrus Groves', 'Refrigerate at 4°C', 'Glass Bottle', 'No Added Sugar', 4.7, 'Ready in 10 mins'),
+  'demo-lemon-crush': packed('Tropical Press', 'Made in Sri Lanka', 'Cool & Dry', 'Glass Bottle', 'Vegan', 4.4),
+  'demo-choc-cookies': packed('Ceylon Cookie Co.', 'Made in Colombo', 'Cool & Dry', 'Resealable Pack', 'Vegetarian', 4.6),
+  'demo-mixed-nuts': packed('Island Snacks', 'Roasted in Kandy', 'Cool & Dry', 'Resealable Pouch', 'Vegan & Gluten-free', 4.8),
+  'demo-dishwash': packed('Clean Home', 'Made in Sri Lanka', 'Room Temperature', 'Recyclable Bottle', 'Not for Consumption', 4.5),
+  'demo-laundry': packed('Clean Home', 'Made in Sri Lanka', 'Room Temperature', 'Recyclable Bottle', 'Not for Consumption', 4.6),
+  'demo-samba-rice': packed('Paddy Fields Lanka', 'Polonnaruwa Paddy Fields', 'Cool & Dry', 'Woven Sack', 'Gluten-free', 4.9),
+  'demo-macaroni': packed('Pasta Lanka', 'Made in Sri Lanka', 'Cool & Dry', 'Recyclable Pack', 'Vegetarian', 4.4),
+};
+
+function productDoc([id, name, category, priceMinor, stockQuantity, unit, image, description], shopId, now) {
   return {
     name, category, priceMinor, currencyCode: 'LKR', stockQuantity,
     lowStockThreshold: 5, unit, description, imageUrl: `assets/images/${image}`,
-    shopId, shopName: SHOP_NAME, isActive: true, createdAt: now, updatedAt: now,
+    shopId, shopName: SHOP_NAME, isActive: true, isOrganic: false,
+    ...DETAILS[id], createdAt: now, updatedAt: now,
   };
 }
 
@@ -103,6 +136,7 @@ function orderDocs(spec, uids, products, { now, Timestamp }) {
   const order = {
     id, customerId: uids.customer, shopId: uids.shop, shopName: SHOP_NAME,
     customerName: customer.fullName, customerPhone: customer.phone,
+    pickupCode: String(1000 + ORDERS.findIndex(order => order[0] === id) * 1111),
     items, subtotalMinor: total, totalMinor: total, currencyCode: 'LKR',
     paymentMethod: method, paymentStatus: method === 'cashOnPickup' ? 'unpaid' : 'demo',
     status, pickupAt: Timestamp.fromMillis(Date.now() + hours * 3600000),

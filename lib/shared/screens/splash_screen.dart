@@ -229,16 +229,7 @@ class _SplashScreenState extends State<SplashScreen> {
                               ),
                             ),
                             const SizedBox(height: 28),
-                            const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _StatusDot(color: AppColors.primary),
-                                SizedBox(width: 8),
-                                _StatusDot(color: AppColors.primaryLight),
-                                SizedBox(width: 8),
-                                _StatusDot(color: AppColors.accent),
-                              ],
-                            ),
+                            const _LoadingDots(),
                             const SizedBox(height: 12),
                             Text(
                               'Preparing fresh local stalls...',
@@ -298,6 +289,79 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Three dots that rise and brighten one after another while the app loads.
+/// Holds still when the system asks to reduce motion.
+class _LoadingDots extends StatefulWidget {
+  const _LoadingDots();
+
+  @override
+  State<_LoadingDots> createState() => _LoadingDotsState();
+}
+
+class _LoadingDotsState extends State<_LoadingDots>
+    with SingleTickerProviderStateMixin {
+  static const _colors = [
+    AppColors.primary,
+    AppColors.primaryLight,
+    AppColors.accent,
+  ];
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (still) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Loading',
+    child: SizedBox(
+      height: 22,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (var index = 0; index < _colors.length; index++) ...[
+              if (index > 0) const SizedBox(width: 8),
+              _dot(index),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _dot(int index) {
+    // Each dot's wave is offset by a third of the cycle.
+    final phase = (_controller.value - index / 3) % 1;
+    final lift = phase < .5 ? math.sin(phase * 2 * math.pi) : 0.0;
+    return Transform.translate(
+      offset: Offset(0, -8 * lift),
+      child: Opacity(
+        opacity: .45 + .55 * lift,
+        child: _StatusDot(color: _colors[index], size: 9),
       ),
     );
   }

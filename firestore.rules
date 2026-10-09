@@ -18,7 +18,8 @@ service cloud.firestore {
       function approvedOwner(shopId) {
         return request.auth != null && request.auth.uid == shopId
           && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'shop'
-          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('accountStatus', 'active') != 'suspended';
       }
       function validProduct() {
         let data = request.resource.data;
@@ -27,6 +28,16 @@ service cloud.firestore {
           && data.stockQuantity is int && data.stockQuantity >= 0
           && (!('lowStockThreshold' in data) || (data.lowStockThreshold is int && data.lowStockThreshold >= 0))
           && (!('isActive' in data) || data.isActive is bool);
+      }
+      // Photo: bundled asset, https URL, or a small inline JPEG/PNG. Only
+      // checked on owner edits, so stock reservations stay within the
+      // per-request expression limit.
+      function validProductImage() {
+        let data = request.resource.data;
+        return !('imageUrl' in data) || data.imageUrl == null || data.imageUrl == ''
+          || (data.imageUrl is string && data.imageUrl.size() <= 400000
+            && (data.imageUrl.matches('^(assets/|https://).*')
+              || data.imageUrl.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$')));
       }
       function validStockMarker(kind) {
         return request.resource.data.stockChangeOrderId is string
@@ -42,7 +53,10 @@ service cloud.firestore {
         let orderId = request.resource.data.stockChangeOrderId;
         let orderPath = /databases/$(database)/documents/orders/$(orderId);
         let order = getAfter(orderPath).data;
-        return customerAccount() && validStockMarker('reserved')
+        // Suspended customers cannot reserve stock, and every order needs its
+        // reservations, so they cannot place orders. Checked here rather than
+        // on the order, whose rule is already near the expression limit.
+        return customerAccount() && notSuspended() && validStockMarker('reserved')
           && !exists(orderPath)
           && resource.data.get('isActive', true) == true
           && order.customerId == request.auth.uid
@@ -74,6 +88,7 @@ service cloud.firestore {
       }
       allow read: if request.auth != null;
       allow create: if approvedOwner(request.resource.data.shopId) && validProduct()
+        && validProductImage()
         && request.resource.data.isActive == true
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
@@ -81,6 +96,7 @@ service cloud.firestore {
         customerCanReserveStock() || actorCanRestoreStock()
         || (approvedOwner(resource.data.shopId)
           && request.resource.data.shopId == resource.data.shopId
+          && validProductImage()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'name', 'category', 'priceMinor', 'stockQuantity', 'lowStockThreshold',
             'description', 'unit', 'imageUrl', 'isActive', 'updatedAt'
@@ -92,6 +108,10 @@ service cloud.firestore {
     }
     function signedIn() {
       return request.auth != null;
+    }
+
+    function notSuspended() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('accountStatus', 'active') != 'suspended';
     }
 
     function customerAccount() {
@@ -181,7 +201,7 @@ service cloud.firestore {
           'stockReserved', 'stockRestored', 'stockQuantities',
           'createdAt', 'updatedAt', 'acceptedAt', 'preparingAt', 'readyAt',
           'collectedAt', 'cancelledAt', 'completedAt',
-          'customerName', 'customerPhone'
+          'customerName', 'customerPhone', 'pickupCode'
         ])
         && data.keys().hasAll([
           'id', 'customerId', 'shopId', 'shopName', 'items',
@@ -198,6 +218,9 @@ service cloud.firestore {
         && (!('customerPhone' in data) || data.customerPhone
           == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('phone', null))
         && approvedOrderShop(data.shopId)
+        // Handover code the customer shows at pickup.
+        && (!('pickupCode' in data)
+          || (data.pickupCode is string && data.pickupCode.matches('^[0-9]{4}$')))
         && data.shopName is string && data.shopName.size() <= 120
         && data.items is list && data.items.size() > 0
         && data.items.size() <= 4
@@ -291,6 +314,16 @@ service cloud.firestore {
           || request.resource.data.orderDetailsViewedAt == request.time);
     }
 
+    // "I've arrived": the customer checks in once while the order is open.
+    function customerCanCheckIn() {
+      return customerAccount()
+        && resource.data.customerId == request.auth.uid
+        && resource.data.status in ['accepted', 'preparing', 'ready']
+        && resource.data.get('arrivedAt', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['arrivedAt'])
+        && request.resource.data.arrivedAt == request.time;
+    }
+
     function shopCanAdvanceOrder() {
       let before = resource.data.status == null ? 'placed' : resource.data.status;
       let after = request.resource.data.status;
@@ -324,16 +357,19 @@ service cloud.firestore {
       function validCustomerPreferenceUpdate() {
         let after = request.resource.data.get('preferences', {});
         let before = resource.data.get('preferences', {});
+        let customerKeys = ['readyForPickupSms', 'paperlessInvoices', 'pushNotifications'];
+        let shopKeys = ['pushNotifications', 'newOrderAlerts', 'lowStockAlerts', 'customerMessageAlerts'];
+        let keys = resource.data.role == 'shop' ? shopKeys : customerKeys;
         return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['preferences'])
-          || (resource.data.role == 'customer'
+          || (resource.data.role in ['customer', 'shop']
             && after is map
-            && after.keys().hasAny(['readyForPickupSms', 'paperlessInvoices', 'pushNotifications'])
+            && after.diff(before).affectedKeys().hasOnly(keys)
             && after.get('readyForPickupSms', false) is bool
             && after.get('paperlessInvoices', false) is bool
             && after.get('pushNotifications', false) is bool
-            && after.diff(before).affectedKeys().hasOnly([
-              'readyForPickupSms', 'paperlessInvoices', 'pushNotifications'
-            ]));
+            && after.get('newOrderAlerts', true) is bool
+            && after.get('lowStockAlerts', true) is bool
+            && after.get('customerMessageAlerts', true) is bool);
       }
       function publicRole() {
         let data = request.resource.data;
@@ -353,10 +389,18 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
       allow update: if (owner()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'fullName', 'phone', 'preferences', 'shopName', 'storeAddress'
+          'fullName', 'phone', 'preferences', 'shopName', 'storeAddress',
+          'photoUrl'
         ])
-        && request.resource.data.fullName is string
-        && (request.resource.data.phone == null || request.resource.data.phone is string)
+        // Profile photo: empty, or a small JPEG/PNG stored inline (no Storage).
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['photoUrl'])
+          || (request.resource.data.photoUrl is string
+            && request.resource.data.photoUrl.size() <= 150000
+            && (request.resource.data.photoUrl == ''
+              || request.resource.data.photoUrl.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$'))))
+        // get() so older profiles missing these fields can still be edited.
+        && request.resource.data.get('fullName', '') is string
+        && (request.resource.data.get('phone', null) == null || request.resource.data.phone is string)
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['shopName', 'storeAddress'])
           || (resource.data.role == 'shop'
             && resource.data.approvalStatus == 'approved'
@@ -369,7 +413,26 @@ service cloud.firestore {
           && resource.data.role == 'shop'
           && resource.data.approvalStatus == 'pending'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus'])
-          && request.resource.data.approvalStatus in ['approved', 'rejected']);
+          && request.resource.data.approvalStatus in ['approved', 'rejected'])
+        || adminManagesAccount();
+
+      // Admins suspend or reactivate non-admin accounts (never their own),
+      // and move accounts between customer and approved shop.
+      function adminManagesAccount() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let data = request.resource.data;
+        return admin()
+          && uid != request.auth.uid
+          && resource.data.role in ['customer', 'shop']
+          && changed.hasOnly(['accountStatus', 'role', 'approvalStatus'])
+          && data.get('accountStatus', 'active') in ['active', 'suspended']
+          && ((data.role == 'customer' && !('approvalStatus' in data))
+            || (data.role == 'shop' && data.get('approvalStatus', '') in ['approved', 'pending', 'rejected']))
+          && (!changed.hasAny(['role']) || !changed.hasAny(['accountStatus']))
+          // Approval decisions go through the review flow; here the status
+          // only changes as part of a role move.
+          && (!changed.hasAny(['approvalStatus']) || changed.hasAny(['role']));
+      }
       allow delete: if false;
 
       // Saved products; one document per product ID, private to the owner.
@@ -388,7 +451,8 @@ service cloud.firestore {
       allow get, list: if (customerAccount() && resource.data.customerId == request.auth.uid)
         || (approvedShop() && resource.data.shopId == request.auth.uid);
       allow update: if customerCanCancelOrder() || shopCanRejectOrder()
-        || customerCanRecordView() || shopCanAdvanceOrder();
+        || customerCanRecordView() || shopCanAdvanceOrder()
+        || customerCanCheckIn();
       allow delete: if false;
 
       // Order chat between its customer and its shop. Messages are immutable.

@@ -39,6 +39,7 @@ import '../../features/product_discovery/screens/product_details_screen.dart';
 import '../../features/product_discovery/screens/search_screen.dart';
 import '../../features/profile/screens/edit_profile_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
+import '../../features/profile/screens/change_password_screen.dart';
 import '../../features/profile/screens/settings_screen.dart';
 import '../../features/shop_management/screens/add_edit_product_screen.dart';
 import '../../features/shop_management/screens/incoming_orders_screen.dart';
@@ -53,6 +54,9 @@ import '../services/order_service.dart';
 import '../../features/shop_management/screens/inventory_stock_screen.dart';
 import '../../features/shop_management/screens/product_management_screen.dart';
 import '../../features/shop_management/screens/shop_dashboard_screen.dart';
+import '../../features/shop_management/screens/shop_notifications_screen.dart';
+import '../../features/shop_management/screens/shop_reports_screen.dart';
+import '../../features/shop_management/screens/shop_settings_screen.dart';
 import '../../models/order_model.dart';
 import '../../models/notification_model.dart';
 import '../../models/payment_model.dart';
@@ -86,6 +90,9 @@ final GoRouter appRouter = GoRouter(
           '/incoming-orders',
           '/shop-profile',
           '/shop-edit-profile',
+          '/shop-reports',
+          '/shop-notifications',
+          '/shop-settings',
         }.contains(path) ||
         const [
           '/shop-order-details/',
@@ -93,11 +100,13 @@ final GoRouter appRouter = GoRouter(
           '/update-order-status/',
           '/contact-customer/',
         ].any(path.startsWith);
+    // Account screens every signed-in role can open.
+    final isAccount = path == '/settings' || path == '/change-password';
     return switch (auth.user!.role) {
       'customer' => isShop || isAdmin || isApproval ? '/customer-home' : null,
-      'admin' => isAdmin ? null : '/admin/users',
+      'admin' => isAdmin || isAccount ? null : '/admin/users',
       'shop' => switch (auth.user!.approvalStatus) {
-        'approved' => isShop ? null : '/shop-dashboard',
+        'approved' => isShop || isAccount ? null : '/shop-dashboard',
         null || 'pending' => path == '/shop-pending' ? null : '/shop-pending',
         'rejected' => path == '/shop-rejected' ? null : '/shop-rejected',
         _ => '/login',
@@ -140,23 +149,28 @@ final GoRouter appRouter = GoRouter(
                     'category': state.uri.queryParameters['category']!,
                   },
                 ).toString(),
-          builder: (context, state) =>
-              CategoriesScreen(category: state.uri.queryParameters['category']),
+          builder: (context, state) => _BackToHome(
+            child: CategoriesScreen(
+              category: state.uri.queryParameters['category'],
+            ),
+          ),
         ),
         GoRoute(
           path: '/cart',
           name: 'cart',
-          builder: (context, state) => const CartScreen(),
+          builder: (context, state) => const _BackToHome(child: CartScreen()),
         ),
         GoRoute(
           path: '/favourites',
           name: 'favourites',
-          builder: (context, state) => const FavouritesScreen(),
+          builder: (context, state) =>
+              const _BackToHome(child: FavouritesScreen()),
         ),
         GoRoute(
           path: '/profile',
           name: 'profile',
-          builder: (context, state) => const ProfileScreen(),
+          builder: (context, state) =>
+              const _BackToHome(child: ProfileScreen()),
         ),
         GoRoute(
           path: '/edit-profile',
@@ -417,6 +431,11 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const SettingsScreen(),
     ),
     GoRoute(
+      path: '/change-password',
+      name: 'change-password',
+      builder: (context, state) => const ChangePasswordScreen(),
+    ),
+    GoRoute(
       path: '/add-edit-product',
       name: 'add-edit-product',
       builder: (context, state) {
@@ -500,7 +519,24 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/inventory-stock',
       name: 'inventory-stock',
-      builder: (context, state) => const InventoryStockScreen(),
+      builder: (context, state) => InventoryStockScreen(
+        initialFilter: state.uri.queryParameters['filter'] == 'low' ? 1 : 0,
+      ),
+    ),
+    GoRoute(
+      path: '/shop-reports',
+      name: 'shop-reports',
+      builder: (context, state) => const ShopReportsScreen(),
+    ),
+    GoRoute(
+      path: '/shop-settings',
+      name: 'shop-settings',
+      builder: (context, state) => const ShopSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/shop-notifications',
+      name: 'shop-notifications',
+      builder: (context, state) => const ShopNotificationsScreen(),
     ),
     GoRoute(
       path: '/product-management',
@@ -544,6 +580,24 @@ Widget _shopOrderPage(String orderId, Widget Function(MockOrderDetails) build) {
       }
       return build(MockOrderDetails.fromOrder(order));
     },
+  );
+}
+
+/// Device back on a bottom-navigation tab returns to Home instead of closing
+/// the app. It must sit inside the tab's own page: the shell's nested
+/// navigator decides whether the app handles back, so a scope placed around
+/// the shell is ignored by Android's predictive back.
+class _BackToHome extends StatelessWidget {
+  const _BackToHome({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => PopScope<Object?>(
+    canPop: !(ModalRoute.of(context)?.isFirst ?? true),
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) context.go('/customer-home');
+    },
+    child: child,
   );
 }
 

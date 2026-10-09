@@ -11,4 +11,7 @@ class AppAssets {
   static const String onboarding3 = 'assets/images/Onboarding3.png';
 
   static const String logo = '${logos}pikzen_logo.jpeg';
+
+  /// Square PikZen mark, also used to generate the launcher icon.
+  static const String appIcon = '${icons}app_icon.png';
 }

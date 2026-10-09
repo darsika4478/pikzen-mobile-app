@@ -100,7 +100,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Contact me'));
       expect(checkout.preference, ReplacementPreference.contactMe);
-      await tester.tap(find.text('Back'));
+      await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
       expect(find.byType(PickupTimeScreen), findsOneWidget);
       expect(checkout.pickupTime, isNotNull);

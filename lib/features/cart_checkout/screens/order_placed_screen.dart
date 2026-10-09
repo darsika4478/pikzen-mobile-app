@@ -8,6 +8,7 @@ import '../../../core/services/order_service.dart';
 import '../../../models/cart_item_model.dart';
 import '../../../models/order_model.dart';
 import '../widgets/checkout_ui.dart';
+import '../../../shared/widgets/animations.dart';
 
 class OrderPlacedScreen extends StatefulWidget {
   const OrderPlacedScreen({
@@ -98,7 +99,7 @@ class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
     final due = order.paymentMethod == 'cashOnPickup';
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const CheckoutHeader(),
+      appBar: const CheckoutHeader(title: 'Order Placed'),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -127,10 +128,12 @@ class _OrderPlacedScreenState extends State<OrderPlacedScreen> {
                         width: 4,
                       ),
                     ),
-                    child: const Icon(
-                      Icons.check_circle,
-                      size: 42,
-                      color: Color(0xFFCBF7CA),
+                    child: const PopIn(
+                      child: Icon(
+                        Icons.check_circle,
+                        size: 42,
+                        color: Color(0xFFCBF7CA),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),

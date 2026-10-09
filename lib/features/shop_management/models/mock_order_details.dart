@@ -36,6 +36,8 @@ class MockOrderDetails {
     this.replacementPreference = '',
     this.acceptedAtLabel = '',
     this.customerPhone = '',
+    this.pickupCode = '',
+    this.arrivedAtLabel = '',
   });
   final String orderId;
   final String customerName;
@@ -53,6 +55,12 @@ class MockOrderDetails {
   final String acceptedAtLabel;
   final String customerPhone;
 
+  /// Code the customer must show at handover; empty for older orders.
+  final String pickupCode;
+
+  /// Time the customer checked in at the store; empty if not arrived.
+  final String arrivedAtLabel;
+
   factory MockOrderDetails.fromOrder(OrderModel order) {
     final incoming = MockIncomingOrder.fromOrder(order);
     return MockOrderDetails(
@@ -60,6 +68,10 @@ class MockOrderDetails {
       customerName: incoming.customerName,
       customerId: order.userId,
       customerPhone: order.customerPhone ?? '',
+      pickupCode: order.pickupCode ?? '',
+      arrivedAtLabel: order.arrivedAt == null
+          ? ''
+          : formatShopDateTime(order.arrivedAt!),
       initials: _initials(order.customerName),
       dateTime: incoming.dateTime,
       preparationDeadline: order.pickupAt == null
