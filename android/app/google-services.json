@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "224693126196-7un39todtu5c6i91511fg84up7aoi3gg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pikzen",
+            "certificate_hash": "3101afa5747fdaa5e43e4bfada1160c90a17030d"
+          }
+        },
+        {
           "client_id": "224693126196-lql8vbahh9kqad1arsfc5ft5bsatc8h0.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

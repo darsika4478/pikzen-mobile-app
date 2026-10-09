@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 
 const checkoutMonths = [
@@ -45,12 +45,31 @@ String rupees(int minor) {
 }
 
 class CheckoutHeader extends StatelessWidget implements PreferredSizeWidget {
-  const CheckoutHeader({super.key, this.title = 'Cart'});
+  const CheckoutHeader({super.key, this.title = 'Checkout', this.onBack});
   final String title;
+
+  /// Shows a back arrow, and handles the device back button, when set.
+  /// Screens with their own back row leave it null so there is never a
+  /// second arrow.
+  final VoidCallback? onBack;
   @override
   Size get preferredSize => const Size.fromHeight(48);
   @override
-  Widget build(BuildContext context) => AppBar(
+  Widget build(BuildContext context) {
+    final bar = _bar();
+    return onBack == null
+        ? bar
+        : CheckoutBackScope(onBack: onBack!, child: bar);
+  }
+
+  AppBar _bar() => AppBar(
+    leading: onBack == null
+        ? null
+        : IconButton(
+            tooltip: 'Back',
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back),
+          ),
     title: Text(
       title,
       style: const TextStyle(
@@ -60,12 +79,28 @@ class CheckoutHeader extends StatelessWidget implements PreferredSizeWidget {
       ),
     ),
     automaticallyImplyLeading: false,
-    actions: [
-      Padding(
-        padding: const EdgeInsets.only(right: 14),
-        child: Image.asset(AppAssets.logo, width: 27, height: 27),
-      ),
-    ],
+  );
+}
+
+/// Routes the device back button to [onBack] when there is no screen to pop
+/// back to, e.g. after `goNamed` replaced the history. Without this, Android
+/// back on such a screen would close the app.
+class CheckoutBackScope extends StatelessWidget {
+  const CheckoutBackScope({
+    super.key,
+    required this.onBack,
+    required this.child,
+  });
+  final VoidCallback onBack;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => PopScope<Object?>(
+    canPop: GoRouter.of(context).canPop(),
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) onBack();
+    },
+    child: child,
   );
 }
 

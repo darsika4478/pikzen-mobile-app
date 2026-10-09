@@ -44,7 +44,9 @@ void main() {
       ),
     );
     appRouter.go('/splash');
-    await tester.pumpAndSettle();
+    // The splash loading dots loop, so pump frames instead of settling.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(SplashScreen), findsOneWidget);
     await tester.pump(const Duration(seconds: 8));
     await tester.pumpAndSettle();

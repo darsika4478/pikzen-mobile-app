@@ -40,7 +40,7 @@ class ProductFormHeader extends StatelessWidget {
         Expanded(
           child: Text(
             editing ? 'Edit Product' : 'Add Product',
-            textAlign: editing ? TextAlign.center : TextAlign.right,
+            textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
           ),
         ),
@@ -55,7 +55,8 @@ class ProductFormHeader extends StatelessWidget {
             ),
           )
         else
-          const SizedBox(width: 8),
+          // Balances the back button so the title stays centred.
+          const SizedBox(width: 48),
       ],
     ),
   );

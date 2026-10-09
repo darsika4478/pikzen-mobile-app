@@ -1,17 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/firestore_service.dart';
+import '../../../models/product_model.dart';
+import '../../../shared/widgets/profile_photo.dart';
+import '../../product_discovery/providers/product_provider.dart';
 import '../models/mock_shop_product.dart';
 import '../widgets/dashboard_bottom_nav.dart';
 import '../widgets/product_form_controls.dart';
 import '../widgets/product_image_preview.dart';
 
 class AddEditProductScreen extends StatefulWidget {
-  const AddEditProductScreen({super.key, this.product, this.service});
+  const AddEditProductScreen({
+    super.key,
+    this.product,
+    this.service,
+    this.photoPicker,
+  });
   final MockShopProduct? product;
   final FirestoreService? service;
+
+  /// Returns picked, already-resized image bytes; defaults to [ImagePicker].
+  final Future<Uint8List?> Function(ImageSource source)? photoPicker;
   @override
   State<AddEditProductScreen> createState() => _AddEditProductScreenState();
 }
@@ -21,19 +34,25 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   late final TextEditingController _name;
   late final TextEditingController _price;
   late final TextEditingController _description;
+  late final TextEditingController _unit;
   String? _category;
+  String? _imageUrl;
+  bool _pickingPhoto = false;
   late int _quantity;
   bool _saving = false;
   late final FirestoreService _service = widget.service ?? FirestoreService();
   bool get _editing => widget.product != null;
-  static const _categories = [
-    'Fruits',
-    'Vegetables',
-    'Dairy',
-    'Bakery',
-    'Beverages',
-    'Other',
+
+  /// The customer catalogue's categories, plus a legacy value if editing.
+  List<String> get _categories => [
+    ...ProductProvider.categoryImages.keys,
+    if (_category != null &&
+        !ProductProvider.categoryImages.containsKey(_category))
+      _category!,
   ];
+
+  /// Upper bound for an inline product photo; matches firestore.rules.
+  static const _maxPhotoLength = 400000;
 
   @override
   void initState() {
@@ -45,8 +64,71 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     _description = TextEditingController(
       text: widget.product?.description ?? '',
     );
-    _category = widget.product?.category;
+    _unit = TextEditingController(text: widget.product?.unit ?? '');
+    final category = widget.product?.category;
+    _category = category == null || category.isEmpty
+        ? null
+        : ProductModel.canonicalCategory(category);
     _quantity = widget.product?.stockQuantity ?? 0;
+    _imageUrl = widget.product?.imageUrl;
+  }
+
+  Future<void> _choosePhoto() async {
+    if (_pickingPhoto || _saving) return;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || source == null) return;
+    setState(() => _pickingPhoto = true);
+    try {
+      final Uint8List? bytes;
+      if (widget.photoPicker != null) {
+        bytes = await widget.photoPicker!(source);
+      } else {
+        final file = await ImagePicker().pickImage(
+          source: source,
+          maxWidth: 640,
+          maxHeight: 640,
+          imageQuality: 70,
+        );
+        bytes = await file?.readAsBytes();
+      }
+      if (!mounted || bytes == null) return;
+      final encoded = ProfilePhotoData.encode(bytes);
+      if (encoded == null) {
+        _message('Choose a JPEG or PNG photo.');
+      } else if (encoded.length > _maxPhotoLength) {
+        _message('That photo is too large. Try another one.');
+      } else {
+        setState(() => _imageUrl = encoded);
+      }
+    } on PlatformException {
+      _message(
+        source == ImageSource.camera
+            ? 'Camera access is needed to take a photo. Allow it in Settings.'
+            : 'Photo access is needed to choose a picture. Allow it in Settings.',
+      );
+    } finally {
+      if (mounted) setState(() => _pickingPhoto = false);
+    }
   }
 
   @override
@@ -54,6 +136,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     _name.dispose();
     _price.dispose();
     _description.dispose();
+    _unit.dispose();
     super.dispose();
   }
 
@@ -85,8 +168,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         priceMinor: (amount * 100).round(),
         stockQuantity: _quantity,
         description: _description.text,
-        unit: widget.product?.unit ?? '',
-        imageUrl: widget.product?.imageUrl,
+        unit: _unit.text,
+        imageUrl: _imageUrl ?? '',
         lowStockThreshold: widget.product?.lowStockThreshold ?? 5,
       );
       if (!mounted) return;
@@ -146,7 +229,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 640),
             child: Column(
               children: [
                 ProductFormHeader(
@@ -166,10 +249,10 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                         children: [
                           Center(
                             child: ProductImagePreview(
-                              product: widget.product,
-                              onChange: () => _message(
-                                'Product image upload is not available yet.',
-                              ),
+                              imageUrl: _imageUrl,
+                              busy: _pickingPhoto,
+                              onChange: _choosePhoto,
+                              onRemove: () => setState(() => _imageUrl = ''),
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -204,21 +287,14 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                 size: 20,
                                 color: AppColors.secondaryText,
                               ),
-                              items:
-                                  (_editing
-                                          ? _categories
-                                          : [
-                                              ..._categories.take(5),
-                                              'Snacks',
-                                              'Other',
-                                            ])
-                                      .map(
-                                        (value) => DropdownMenuItem(
-                                          value: value,
-                                          child: Text(value),
-                                        ),
-                                      )
-                                      .toList(),
+                              items: _categories
+                                  .map(
+                                    (value) => DropdownMenuItem(
+                                      value: value,
+                                      child: Text(value),
+                                    ),
+                                  )
+                                  .toList(),
                               onChanged: (value) =>
                                   setState(() => _category = value),
                               validator: (value) =>
@@ -248,6 +324,17 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                     ? 'Enter a price greater than 0'
                                     : null;
                               },
+                            ),
+                          ),
+                          ProductFormField(
+                            label: 'UNIT',
+                            child: TextFormField(
+                              controller: _unit,
+                              style: const TextStyle(fontSize: 12),
+                              textCapitalization: TextCapitalization.none,
+                              decoration: _fieldDecoration(
+                                'e.g. 1kg bag, 500ml, Pack of 10',
+                              ),
                             ),
                           ),
                           ProductFormField(

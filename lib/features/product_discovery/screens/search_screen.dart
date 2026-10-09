@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/product_model.dart';
 import '../providers/product_provider.dart';
 import '../widgets/discovery_ui.dart';
+import '../../../shared/widgets/animations.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, this.query = '', this.category});
@@ -175,7 +176,12 @@ class _SearchScreenState extends State<SearchScreen> {
                     'No products found. Try another search or filter.',
                   ),
                 ),
-              for (final product in results) ProductListCard(product),
+              for (final (index, product) in results.indexed)
+                FadeSlideIn(
+                  key: ValueKey(product.id),
+                  index: index,
+                  child: ProductListCard(product),
+                ),
             ],
           ),
         ),

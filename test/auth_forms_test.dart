@@ -162,13 +162,13 @@ void main() {
       );
     },
   );
-  testWidgets('Recovery detects email/mobile without faking SMS success', (
+  testWidgets('Recovery is email-only and never offers fake SMS reset', (
     tester,
   ) async {
     await mount(tester, const ForgotPasswordScreen());
+    expect(find.textContaining('SMS'), findsNothing);
     await tester.enterText(find.byType(TextFormField), '+94771234567');
     await tester.pump();
-    expect(find.byIcon(Icons.phone_outlined), findsOneWidget);
     expect(
       tester.widget<AuthAction>(find.byType(AuthAction)).onPressed,
       isNull,

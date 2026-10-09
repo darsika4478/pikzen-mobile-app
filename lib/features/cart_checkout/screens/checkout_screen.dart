@@ -18,7 +18,11 @@ class CheckoutScreen extends StatelessWidget {
     final time = checkout.pickupTime;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const CheckoutHeader(title: 'Checkout'),
+      appBar: CheckoutHeader(
+        title: 'Checkout',
+        onBack: () =>
+            context.canPop() ? context.pop() : context.goNamed('cart'),
+      ),
       body: SafeArea(
         top: false,
         child: Column(

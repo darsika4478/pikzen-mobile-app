@@ -28,7 +28,7 @@ class DashboardBottomNav extends StatelessWidget {
       child: Center(
         heightFactor: 1,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
+          constraints: const BoxConstraints(maxWidth: 640),
           child: Row(
             children: List.generate(labels.length, (index) {
               final selected = index == selectedIndex;

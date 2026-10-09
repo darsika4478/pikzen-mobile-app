@@ -146,7 +146,15 @@ class _ReviewOrderScreenState extends State<ReviewOrderScreen> {
     final time = checkout.pickupTime;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const CheckoutHeader(),
+      appBar: CheckoutHeader(
+        title: 'Review Order',
+        onBack: () => context.canPop()
+            ? context.pop()
+            : context.goNamed(
+                'replacement-preference',
+                queryParameters: const {'returnToReview': 'true'},
+              ),
+      ),
       body: SafeArea(
         top: false,
         child: Column(

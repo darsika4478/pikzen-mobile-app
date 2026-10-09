@@ -51,6 +51,24 @@ class FirestoreService {
     });
   }
 
+  /// Shop alert switches: newOrderAlerts, lowStockAlerts and
+  /// customerMessageAlerts. Missing keys mean "on".
+  static const shopAlertKeys = [
+    'newOrderAlerts',
+    'lowStockAlerts',
+    'customerMessageAlerts',
+  ];
+
+  Future<void> setShopAlert(String key, bool enabled) async {
+    if (!shopAlertKeys.contains(key)) {
+      throw ArgumentError('Unknown alert setting.');
+    }
+    final uid = await approvedShopUid();
+    await database.collection('users').doc(uid).update({
+      'preferences.$key': enabled,
+    });
+  }
+
   Stream<List<ProductModel>> shopProducts() async* {
     final uid = await approvedShopUid();
     yield* database
@@ -301,6 +319,34 @@ class FirestoreService {
             .map((doc) => UserModel.fromMap(doc.id, doc.data()))
             .toList(),
       );
+
+  /// Admin: suspend or reactivate a customer or shop account. Suspended
+  /// accounts cannot sign in or place orders (enforced by rules too).
+  Future<void> setAccountStatus(String uid, String accountStatus) async {
+    if (!['active', 'suspended'].contains(accountStatus)) {
+      throw ArgumentError('Choose active or suspended.');
+    }
+    if (uid == auth.currentUser?.uid) {
+      throw StateError('You cannot change your own account status.');
+    }
+    await database.collection('users').doc(uid).update({
+      'accountStatus': accountStatus,
+    });
+  }
+
+  /// Admin: move an account between customer and (approved) shop.
+  Future<void> setUserRole(String uid, String role) async {
+    if (!['customer', 'shop'].contains(role)) {
+      throw ArgumentError('Choose customer or shop.');
+    }
+    if (uid == auth.currentUser?.uid) {
+      throw StateError('You cannot change your own role.');
+    }
+    await database.collection('users').doc(uid).update({
+      'role': role,
+      'approvalStatus': role == 'shop' ? 'approved' : FieldValue.delete(),
+    });
+  }
 
   Future<void> reviewShop(
     String shopUid, {

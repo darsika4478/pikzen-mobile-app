@@ -30,6 +30,8 @@ class OrderModel {
     this.cancellationNote,
     this.customerName,
     this.customerPhone,
+    this.pickupCode,
+    this.arrivedAt,
   }) : items = List<CartItemModel>.unmodifiable(items);
 
   final String id;
@@ -63,6 +65,12 @@ class OrderModel {
   /// shop never needs to read the private profile. Absent on older orders.
   final String? customerName;
   final String? customerPhone;
+
+  /// Four-digit code the customer shows the shop at handover.
+  final String? pickupCode;
+
+  /// Set when the customer taps "I've arrived" at the store.
+  final DateTime? arrivedAt;
 
   int get calculatedTotalMinor => items.fold<int>(
     0,
@@ -104,6 +112,8 @@ class OrderModel {
     cancellationNote: cancellationNote,
     customerName: customerName,
     customerPhone: customerPhone,
+    pickupCode: pickupCode,
+    arrivedAt: arrivedAt,
   );
 
   Map<String, dynamic> toFirestore({bool serverTimestamps = false}) => {
@@ -217,6 +227,8 @@ class OrderModel {
       cancellationNote: data['cancellationNote'] as String?,
       customerName: data['customerName'] as String?,
       customerPhone: data['customerPhone'] as String?,
+      pickupCode: data['pickupCode'] as String?,
+      arrivedAt: _dateValue(data['arrivedAt']),
     );
   }
 }

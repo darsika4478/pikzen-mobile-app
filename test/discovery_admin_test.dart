@@ -50,6 +50,16 @@ class FakeDirectory extends FirestoreService {
   }
 
   @override
+  Future<void> setAccountStatus(String uid, String accountStatus) async {
+    writes.add({'id': uid, 'accountStatus': accountStatus});
+  }
+
+  @override
+  Future<void> setUserRole(String uid, String role) async {
+    writes.add({'id': uid, 'role': role});
+  }
+
+  @override
   Future<void> reviewShop(
     String shopUid, {
     required String approvalStatus,
@@ -152,6 +162,28 @@ void main() {
     expect(p.products, ProductProvider.catalog);
     p.dispose();
   });
+  test('Admin suspends, reactivates and changes roles', () async {
+    final service = FakeDirectory();
+    final users = AdminUsersProvider(service: service);
+    await Future<void>.delayed(Duration.zero);
+    expect(users.activeCount, 3);
+    expect(await users.setSuspended(customer, true), isTrue);
+    expect(service.writes.last, {
+      'id': 'customer',
+      'accountStatus': 'suspended',
+    });
+    expect(users.suspendedCount, 1);
+    users.setStatusFilter(AdminStatusFilter.suspended);
+    expect(users.matching('All', '').single.id, 'customer');
+    users.setStatusFilter(AdminStatusFilter.all);
+    expect(await users.setSuspended(admin, true), isFalse, reason: 'admins');
+    expect(await users.changeRole(customer, 'shop'), isTrue);
+    expect(service.writes.last, {'id': 'customer', 'role': 'shop'});
+    expect(users.matching('Shop Owners', '').length, 2);
+    users.dispose();
+    await service.controller.close();
+  });
+
   test('Admin filters and status-only approval', () async {
     final service = FakeDirectory();
     final users = AdminUsersProvider(service: service);
@@ -224,6 +256,38 @@ void main() {
       }
     }
   });
+  testWidgets('device back on a tab returns Home instead of exiting', (
+    tester,
+  ) async {
+    final auth = AuthProvider(service: FakeAuthService(), restore: false)
+      ..user = customer;
+    final products = ProductProvider();
+    final cart = CartProvider();
+    addTearDown(auth.dispose);
+    addTearDown(products.dispose);
+    addTearDown(cart.dispose);
+    appRouter.go('/cart');
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: auth),
+          ChangeNotifierProvider.value(value: products),
+          ChangeNotifierProvider.value(value: cart),
+        ],
+        child: MaterialApp.router(
+          theme: AppTheme.lightTheme,
+          routerConfig: appRouter,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(appRouter.state.uri.path, '/cart');
+    // Simulates the Android back button; true means the app handled it.
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    await tester.pumpAndSettle();
+    expect(appRouter.state.uri.path, '/customer-home');
+  });
+
   testWidgets(
     'All categories route to filtered search; selected details use shared cart',
     (tester) async {
@@ -345,9 +409,9 @@ void main() {
       addTearDown(service.controller.close);
       await mount(tester, AdminUsersScreen(service: service));
       await tester.ensureVisible(
-        find.widgetWithText(ChoiceChip, 'Pending Shops'),
+        find.widgetWithText(ChoiceChip, 'Pending Shops (1)'),
       );
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Pending Shops'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Pending Shops (1)'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text(decision));
       await tester.tap(find.text(decision));
@@ -364,4 +428,27 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   }
+  testWidgets('Admin card actions expand and suspend after confirmation', (
+    tester,
+  ) async {
+    final service = FakeDirectory();
+    addTearDown(service.controller.close);
+    await mount(tester, AdminUsersScreen(service: service));
+    expect(find.text('User Management'), findsOneWidget);
+    expect(find.text('All (3)'), findsOneWidget);
+    await tester.tap(find.byTooltip('More actions for Customer Person'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Suspend'));
+    await tester.tap(find.text('Suspend'));
+    await tester.pumpAndSettle();
+    expect(find.text('Suspend Customer Person?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Suspend'));
+    await tester.pumpAndSettle();
+    expect(service.writes.single, {
+      'id': 'customer',
+      'accountStatus': 'suspended',
+    });
+    expect(find.text('Suspended'), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

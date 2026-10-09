@@ -18,11 +18,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _input = TextEditingController();
   final _form = GlobalKey<FormState>();
   String? _success;
-  bool get _mobile => Validators.isPhoneInput(_input.text);
   @override
   void initState() {
     super.initState();
     _input.addListener(_changed);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AuthProvider>().clearError();
+    });
   }
 
   void _changed() => setState(() => _success = null);
@@ -33,7 +35,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _reset() async {
-    if (_mobile || !(_form.currentState?.validate() ?? false)) return;
+    if (!(_form.currentState?.validate() ?? false)) return;
     final ok = await context.read<AuthProvider>().reset(_input.text);
     if (mounted && ok) {
       setState(
@@ -68,27 +70,42 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return AuthPage(
       child: Column(
         children: [
-          Row(
-            children: [
-              IconButton.filledTonal(
-                tooltip: 'Back to Login',
-                onPressed: () => context.goNamed('login'),
-                icon: const Icon(Icons.arrow_back),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: AuthBackButton(
+              tooltip: 'Back to Login',
+              onPressed: () => context.goNamed('login'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // The artwork has a white background, so it sits in a white circle.
+          Container(
+            width: 132,
+            height: 132,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: .12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            // Clipped so the artwork's square white corners stay inside.
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/forgot pw.png',
+                width: 104,
+                height: 104,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
               ),
-              const Spacer(),
-              const Flexible(child: AuthBadge('ACCOUNT RECOVERY')),
-              const Spacer(),
-            ],
+            ),
           ),
-          const SizedBox(height: 24),
-          Image.asset(
-            'assets/images/forgot pw.png',
-            width: 120,
-            height: 110,
-            fit: BoxFit.contain,
-            excludeFromSemantics: true,
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 22),
           Text(
             'Forgot Password?',
             style: Theme.of(context).textTheme.headlineSmall
@@ -96,7 +113,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Enter your registered email address to receive a secure password reset link.',
+            "Enter the email you signed up with and we'll send you a link to reset your password.",
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.secondaryText),
           ),
@@ -104,74 +121,52 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           Form(
             key: _form,
             autovalidateMode: AutovalidateMode.onUserInteraction,
-            child: TextFormField(
+            child: AuthInput(
+              label: 'Email Address',
               controller: _input,
-              keyboardType: _mobile
-                  ? TextInputType.phone
-                  : TextInputType.emailAddress,
-              validator: _mobile ? Validators.phone : Validators.email,
-              decoration: InputDecoration(
-                labelText: 'Registered Email or Mobile',
-                prefixIcon: Icon(
-                  _mobile ? Icons.phone_outlined : Icons.mail_outline,
-                ),
-                suffixIcon: IconButton(
-                  tooltip: 'Clear',
-                  onPressed: _input.clear,
-                  icon: const Icon(Icons.cancel_outlined, size: 18),
-                ),
-              ),
+              validator: Validators.email,
+              keyboardType: TextInputType.emailAddress,
+              onSubmitted: Validators.email(_input.text) == null && !auth.busy
+                  ? _reset
+                  : null,
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _RecoveryChoice(
-                  label: 'Send to Email',
-                  icon: Icons.alternate_email,
-                  selected: !_mobile,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _RecoveryChoice(
-                  label: 'SMS Passcode',
-                  icon: Icons.sms_outlined,
-                  selected: _mobile,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_mobile)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Text(
-                'Phone recovery is not configured for this app. A registration phone number does not enable SMS password reset. Please enter your account email to reset your password.',
-                style: TextStyle(color: AppColors.secondaryText),
-                textAlign: TextAlign.center,
-              ),
-            ),
           AuthError(auth.error),
           if (_success != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.softGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Semantics(
                 liveRegion: true,
-                child: Text(
-                  _success!,
-                  style: const TextStyle(color: AppColors.primary),
-                  textAlign: TextAlign.center,
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.mark_email_read_outlined,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _success!,
+                        style: const TextStyle(
+                          color: AppColors.darkGreen,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           AuthAction(
-            label: _mobile ? 'SMS unavailable' : 'Send Reset Link',
+            label: 'Send Reset Link',
             busy: auth.busy,
-            onPressed: !_mobile && Validators.email(_input.text) == null
-                ? _reset
-                : null,
+            onPressed: Validators.email(_input.text) == null ? _reset : null,
           ),
           const SizedBox(height: 32),
           Material(
@@ -184,11 +179,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Image.asset(
-                      'assets/images/Hotline.png',
-                      width: 44,
-                      height: 44,
-                      fit: BoxFit.contain,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.asset(
+                          'assets/images/Hotline.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -236,47 +241,4 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       ),
     );
   }
-}
-
-class _RecoveryChoice extends StatelessWidget {
-  const _RecoveryChoice({
-    required this.label,
-    required this.icon,
-    required this.selected,
-  });
-  final String label;
-  final IconData icon;
-  final bool selected;
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      decoration: BoxDecoration(
-        color: selected ? Colors.white : const Color(0xFFF0F5FC),
-        borderRadius: BorderRadius.circular(10),
-        border: selected ? Border.all(color: AppColors.softGreen) : null,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: selected ? AppColors.primary : AppColors.secondaryText,
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: selected ? AppColors.primary : AppColors.secondaryText,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }

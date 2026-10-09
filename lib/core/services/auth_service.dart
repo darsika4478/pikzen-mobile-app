@@ -49,6 +49,11 @@ class AuthService {
         'Your account role is not supported. Please contact support.',
       );
     }
+    if (result.accountStatus == 'suspended') {
+      throw const AuthFailure(
+        'This account has been suspended. Please contact PikZen support.',
+      );
+    }
     if (result.name.trim().isEmpty &&
         (user.displayName ?? '').trim().isNotEmpty) {
       return UserModel(
@@ -143,12 +148,63 @@ class AuthService {
 
   Future<void> resetPassword(String email) =>
       auth.sendPasswordResetEmail(email: email.trim());
+
+  /// Whether the signed-in account has an email/password login (Google-only
+  /// accounts manage their password with Google).
+  bool get hasPassword =>
+      auth.currentUser?.providerData.any((p) => p.providerId == 'password') ??
+      false;
+
+  /// Re-checks the current password, then sets [newPassword].
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final user = auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw const AuthFailure('Please sign in again.');
+    }
+    if (!hasPassword) {
+      throw const AuthFailure(
+        'This account signs in with Google, so its password is managed by Google.',
+      );
+    }
+    if (currentPassword == newPassword) {
+      throw const AuthFailure('Choose a password you have not used here.');
+    }
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: currentPassword),
+      );
+    } on FirebaseAuthException catch (error) {
+      if (const {
+        'wrong-password',
+        'invalid-credential',
+        'user-mismatch',
+      }.contains(error.code)) {
+        throw const AuthFailure('Your current password is incorrect.');
+      }
+      rethrow;
+    }
+    await user.updatePassword(newPassword);
+  }
+
   Future<void> signOut() => auth.signOut();
 
   static String message(Object error) {
     if (error is AuthFailure) return error.message;
     if (error is GoogleSignInException) {
-      return 'Google sign-in was cancelled or is unavailable. Please try again.';
+      // Logged so setup problems (e.g. an unregistered SHA-1) are diagnosable.
+      debugPrint('GoogleSignInException(${error.code}): ${error.description}');
+      return switch (error.code) {
+        GoogleSignInExceptionCode.canceled => 'Google sign-in was cancelled.',
+        GoogleSignInExceptionCode.clientConfigurationError ||
+        GoogleSignInExceptionCode.providerConfigurationError =>
+          'Google sign-in is not set up for this app build. '
+              'Please use email sign-in for now.',
+        _ => 'Google sign-in is unavailable right now. Please try again.',
+      };
     }
     if (error is FirebaseAuthException) {
       return switch (error.code) {
@@ -164,6 +220,8 @@ class AuthService {
         'network-request-failed' =>
           'Check your internet connection and try again.',
         'too-many-requests' => 'Too many attempts. Please try again later.',
+        'requires-recent-login' =>
+          'For security, please sign out and sign in again, then retry.',
         'operation-not-allowed' =>
           'This sign-in method is not enabled yet. Please contact support.',
         'popup-closed-by-user' ||

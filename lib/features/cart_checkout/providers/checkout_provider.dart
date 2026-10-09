@@ -13,13 +13,18 @@ class PickupAvailability {
   static const slotEndHour = 19;
   static const slotEndMinute = 30;
 
+  /// Shops need time to pick and pack, so the earliest slot starts at least
+  /// this long after checkout.
+  static const preparationLeadTime = Duration(minutes: 30);
+
   static List<DateTime> slotsFor(DateTime day, DateTime now) {
+    final earliest = now.add(preparationLeadTime);
     final slots = <DateTime>[];
     for (var hour = slotStartHour; hour <= slotEndHour; hour++) {
       for (var minute = 0; minute < 60; minute += slotMinutes) {
         if (hour == slotEndHour && minute > slotEndMinute) break;
         final slot = DateTime(day.year, day.month, day.day, hour, minute);
-        if (slot.isAfter(now)) slots.add(slot);
+        if (!slot.isBefore(earliest)) slots.add(slot);
       }
     }
     return slots;

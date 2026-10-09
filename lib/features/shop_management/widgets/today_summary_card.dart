@@ -59,7 +59,7 @@ class TodaySummaryCard extends StatelessWidget {
                 icon: Icons.shopping_bag_outlined,
                 value: '$newOrders',
                 label: 'New Orders',
-                status: newOrders == 0 ? 'Up to date' : '$newOrders new',
+                status: newOrders == 0 ? 'Up to date' : '+$newOrders new',
                 showBadge: newOrders > 0,
               ),
             ),

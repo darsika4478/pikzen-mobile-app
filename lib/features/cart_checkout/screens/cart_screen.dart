@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../models/cart_item_model.dart';
@@ -131,15 +130,7 @@ class _CartScreenState extends State<CartScreen> {
     final items = cart.items;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Cart'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Image.asset(AppAssets.logo, width: 30, height: 30),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Cart')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),

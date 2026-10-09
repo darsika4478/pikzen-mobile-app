@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
@@ -41,6 +42,12 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
       _ => null,
     };
     if (next == null) return;
+    if (next == 'collected' &&
+        widget.order.pickupCode.isNotEmpty &&
+        !await _verifyPickupCode()) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _busy = true);
     try {
       await _orders.updateOrderStatus(
@@ -57,6 +64,14 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Handover check: the customer reads out the code from their order.
+  Future<bool> _verifyPickupCode() async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (_) => _PickupCodeDialog(expected: widget.order.pickupCode),
+      ) ==
+      true;
 
   void _back() {
     if (context.canPop()) {
@@ -77,7 +92,7 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
+          constraints: const BoxConstraints(maxWidth: 640),
           child: Column(
             children: [
               UpdateOrderStatusHeader(
@@ -90,6 +105,11 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (widget.order.arrivedAtLabel.isNotEmpty &&
+                          _activeStage < 4) ...[
+                        _ArrivalBanner(time: widget.order.arrivedAtLabel),
+                        const SizedBox(height: 16),
+                      ],
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: OrderStatusTimeline(
@@ -113,6 +133,94 @@ class _UpdateOrderStatusScreenState extends State<UpdateOrderStatusScreen> {
       onAdvance: _busy || _activeStage == 0 || _activeStage == 4
           ? null
           : _advance,
+    ),
+  );
+}
+
+class _PickupCodeDialog extends StatefulWidget {
+  const _PickupCodeDialog({required this.expected});
+  final String expected;
+
+  @override
+  State<_PickupCodeDialog> createState() => _PickupCodeDialogState();
+}
+
+class _PickupCodeDialogState extends State<_PickupCodeDialog> {
+  final _input = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    if (_input.text == widget.expected) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() => _error = 'Code does not match this order.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Verify pickup code'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Ask the customer for the 4-digit code shown in their order.',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _input,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onSubmitted: (_) => _confirm(),
+          decoration: InputDecoration(
+            labelText: 'Pickup code',
+            errorText: _error,
+          ),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _confirm, child: const Text('Confirm Handover')),
+    ],
+  );
+}
+
+class _ArrivalBanner extends StatelessWidget {
+  const _ArrivalBanner({required this.time});
+  final String time;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: AppColors.lightOrange,
+      border: Border.all(color: AppColors.orangeBorder),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.directions_walk_rounded, color: AppColors.accent),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Customer has arrived ($time). Please bring the order out.',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     ),
   );
 }

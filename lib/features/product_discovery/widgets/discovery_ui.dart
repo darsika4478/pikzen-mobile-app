@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../models/product_model.dart';
 import '../providers/product_provider.dart';
 import 'product_card.dart';
+import '../../../shared/widgets/animations.dart';
+import '../../../shared/widgets/app_image.dart';
 
 const discoveryBackground = Color(0xFFF8F9FF);
 
@@ -44,10 +45,6 @@ class DiscoveryHeader extends StatelessWidget implements PreferredSizeWidget {
         onPressed: () => context.pushNamed('notifications'),
         icon: const Icon(Icons.notifications_none),
       ),
-      Padding(
-        padding: const EdgeInsets.only(right: 16),
-        child: Image.asset(AppAssets.logo, width: 28, height: 28),
-      ),
     ],
   );
 }
@@ -59,42 +56,37 @@ class ProductImage extends StatelessWidget {
     this.height = 100,
     this.width,
     this.fit = BoxFit.cover,
+    this.hero = false,
   });
   final ProductModel product;
   final double height;
   final double? width;
   final BoxFit fit;
+
+  /// Flies the image between the product card and the details page. Only
+  /// one image per product may set this on a screen.
+  final bool hero;
+
+  static String heroTag(String productId) => 'product-image-$productId';
+
   @override
-  Widget build(BuildContext context) {
-    Widget fallback() => Container(
+  Widget build(BuildContext context) =>
+      hero ? Hero(tag: heroTag(product.id), child: _image()) : _image();
+
+  Widget _image() => AppImage(
+    source: product.imageUrl,
+    height: height,
+    width: width,
+    fit: fit,
+    fallback: Container(
       height: height,
       width: width,
       color: AppColors.softGreen,
       child: const Center(
         child: Icon(Icons.shopping_basket_outlined, color: AppColors.primary),
       ),
-    );
-    final path = product.imageUrl;
-    if (path == null || path.isEmpty) return fallback();
-    final uri = Uri.tryParse(path);
-    if (uri?.scheme == 'https') {
-      return Image.network(
-        path,
-        height: height,
-        width: width,
-        fit: fit,
-        errorBuilder: (_, _, _) => fallback(),
-      );
-    }
-    if (!path.startsWith('assets/')) return fallback();
-    return Image.asset(
-      path,
-      height: height,
-      width: width,
-      fit: fit,
-      errorBuilder: (_, _, _) => fallback(),
-    );
-  }
+    ),
+  );
 }
 
 class FavouriteButton extends StatelessWidget {
@@ -109,10 +101,13 @@ class FavouriteButton extends StatelessWidget {
           ? 'Remove ${product.name} from favourites'
           : 'Favourite ${product.name}',
       onPressed: () => provider.toggleFavourite(product.id),
-      icon: Icon(
-        saved ? Icons.favorite : Icons.favorite_border,
-        size: 21,
-        color: saved ? AppColors.error : AppColors.secondaryText,
+      icon: BumpOnChange(
+        value: saved,
+        child: Icon(
+          saved ? Icons.favorite : Icons.favorite_border,
+          size: 21,
+          color: saved ? AppColors.error : AppColors.secondaryText,
+        ),
       ),
     );
   }
@@ -175,6 +170,7 @@ class ProductListCard extends StatelessWidget {
                 product,
                 width: large ? double.infinity : 90,
                 height: large ? 160 : 108,
+                hero: true,
               ),
             );
             final info = Column(

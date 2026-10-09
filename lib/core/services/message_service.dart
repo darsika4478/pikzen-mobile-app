@@ -1,6 +1,8 @@
 // The public named injection parameters are intentionally kept stable.
 // ignore_for_file: prefer_initializing_formals
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -42,6 +44,49 @@ class MessageService {
                 .map((doc) => OrderMessage.fromFirestore(doc.id, doc.data()))
                 .toList(growable: false),
           );
+
+  /// IDs of [orderIds] whose most recent message came from the customer,
+  /// i.e. conversations still waiting for the shop's reply. Updates live.
+  Stream<Set<String>> awaitingReply(List<String> orderIds) {
+    if (orderIds.isEmpty) return Stream.value(const {});
+    final waiting = <String>{};
+    final subscriptions = <StreamSubscription<void>>[];
+    late final StreamController<Set<String>> controller;
+    controller = StreamController<Set<String>>(
+      onListen: () {
+        var reported = 0;
+        for (final id in orderIds) {
+          var first = true;
+          subscriptions.add(
+            _messages(id)
+                .orderBy('createdAt', descending: true)
+                .limit(1)
+                .snapshots()
+                .listen((snapshot) {
+                  final last = snapshot.docs.isEmpty
+                      ? null
+                      : snapshot.docs.first.data()['senderRole'];
+                  last == 'customer' ? waiting.add(id) : waiting.remove(id);
+                  if (first) {
+                    first = false;
+                    reported++;
+                  }
+                  // Wait for every order once, then emit on each change.
+                  if (reported == orderIds.length) {
+                    controller.add(Set.unmodifiable(waiting));
+                  }
+                }, onError: controller.addError),
+          );
+        }
+      },
+      onCancel: () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      },
+    );
+    return controller.stream;
+  }
 
   /// Sends as the shop or the customer, whichever owns the order for the
   /// signed-in account. Shop messages also notify the customer.

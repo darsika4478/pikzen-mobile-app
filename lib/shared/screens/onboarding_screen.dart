@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -73,17 +75,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             icon: const Icon(Icons.arrow_back),
                           ),
                         ],
-                        Flexible(
-                          fit: _page == 2 ? FlexFit.tight : FlexFit.loose,
+                        // The badge is the only flexible child, so it takes all
+                        // the free space and Skip always sits at the far right;
+                        // with large text the badge wraps instead of overflowing.
+                        Expanded(
                           child: Align(
-                            widthFactor: 1,
                             alignment: _page == 2
                                 ? Alignment.center
                                 : Alignment.centerLeft,
                             child: _StepBadge(page: _page),
                           ),
                         ),
-                        if (_page != 2) const Spacer(),
                         TextButton(
                           onPressed: _finish,
                           child: const Text('Skip'),
@@ -222,8 +224,13 @@ class _OnboardingPage extends StatelessWidget {
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Page 1's artwork carries its own badge near the top edge, so it
+        // keeps its 4:3 shape instead of being cropped to a fixed height.
         final imageHeight = index == 0
-            ? (constraints.maxHeight * 0.48).clamp(190.0, 320.0)
+            ? math.min(
+                (constraints.maxWidth - 48) * 0.75,
+                constraints.maxHeight * 0.5,
+              )
             : (constraints.maxWidth - 32) * (index == 1 ? 0.79 : 0.75);
         return SingleChildScrollView(
           key: PageStorageKey('onboarding-page-$index'),
@@ -251,7 +258,7 @@ class _OnboardingPage extends StatelessWidget {
                     _images[index],
                     width: double.infinity,
                     height: imageHeight,
-                    fit: index == 0 ? BoxFit.cover : BoxFit.contain,
+                    fit: BoxFit.contain,
                     semanticLabel: _imageDescriptions[index],
                   ),
                 ),
@@ -393,11 +400,7 @@ class _StepBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(40),
       ),
       child: Text(
-        page == 0
-            ? '\u25CF Step 1 of 3'
-            : page == 1
-            ? 'STEP 2 of 3'
-            : '\u25CF STEP 3 OF 3',
+        '\u25CF Step ${page + 1} of 3',
         style: const TextStyle(
           color: AppColors.primary,
           fontSize: 11,

@@ -23,7 +23,9 @@ class MockIncomingOrder {
     customerName: order.customerName?.trim().isNotEmpty == true
         ? order.customerName!.trim()
         : 'Customer ${order.userId}',
-    timeAgo: (order.status ?? 'placed').toUpperCase(),
+    timeAgo: order.arrivedAt != null && order.status != 'collected'
+        ? 'CUSTOMER ARRIVED'
+        : (order.status ?? 'placed').toUpperCase(),
     dateTime: order.pickupAt == null
         ? 'Pickup time pending'
         : formatShopDateTime(order.pickupAt!),

@@ -116,7 +116,10 @@ class _OrderCancellationScreenState extends State<OrderCancellationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const CheckoutHeader(),
+      appBar: CheckoutHeader(
+        title: 'Cancel Order',
+        onBack: () => _keepOrder(widget.order?.id ?? widget.orderId ?? ''),
+      ),
       body: SafeArea(
         top: false,
         child: _stream == null

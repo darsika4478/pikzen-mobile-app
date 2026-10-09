@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/services/order_service.dart';
 import '../../../models/order_model.dart';
 import '../../../models/payment_model.dart';
+import '../../../shared/widgets/animations.dart';
 
 class PaymentResultScreen extends StatefulWidget {
   const PaymentResultScreen({
@@ -99,38 +100,45 @@ class _PaymentResultScreenState extends State<PaymentResultScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF19A75A),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: .18),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.check_rounded,
-                            color: Colors.white,
-                            size: 55,
+                        PopIn(
+                          child: Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF19A75A),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(
+                                    alpha: .18,
+                                  ),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 55,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 26),
-                        Text(
-                          cash
-                              ? 'Order Placed!'
-                              : demo
-                              ? 'Demo Payment Complete'
-                              : 'Payment Successful!',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryText,
+                        FadeSlideIn(
+                          delay: const Duration(milliseconds: 250),
+                          child: Text(
+                            cash
+                                ? 'Order Placed!'
+                                : demo
+                                ? 'Demo Payment Complete'
+                                : 'Payment Successful!',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryText,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),

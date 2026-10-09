@@ -2,15 +2,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/order_service.dart';
 import '../../../core/utils/validators.dart';
 import '../../../models/order_model.dart';
+import '../../../shared/widgets/profile_photo.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../widgets/merchant_edit_profile_view.dart';
 
@@ -30,6 +32,7 @@ class EditProfileScreen extends StatefulWidget {
     this.profileWriter,
     this.ordersForCustomer,
     this.identityForTesting,
+    this.photoPicker,
   }) : isShopPartner = false;
 
   const EditProfileScreen.shopPartner({super.key})
@@ -37,7 +40,8 @@ class EditProfileScreen extends StatefulWidget {
       profileLoader = null,
       profileWriter = null,
       ordersForCustomer = null,
-      identityForTesting = null;
+      identityForTesting = null,
+      photoPicker = null;
 
   final bool isShopPartner;
 
@@ -47,6 +51,9 @@ class EditProfileScreen extends StatefulWidget {
   profileWriter;
   final Stream<List<OrderModel>> Function(String uid)? ordersForCustomer;
   final EditProfileIdentity? identityForTesting;
+
+  /// Returns picked image bytes, already resized; defaults to [ImagePicker].
+  final Future<Uint8List?> Function(ImageSource source)? photoPicker;
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -69,6 +76,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _sms = false;
   bool _paperless = false;
   String _photoUrl = '';
+  bool _savingPhoto = false;
   DateTime? _createdAt;
   Stream<List<OrderModel>>? _orders;
 
@@ -253,6 +261,123 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _formKey.currentState?.reset();
   }
 
+  Future<Uint8List?> _pickPhoto(ImageSource source) async {
+    final picker = widget.photoPicker;
+    if (picker != null) return picker(source);
+    final file = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 320,
+      maxHeight: 320,
+      imageQuality: 72,
+      preferredCameraDevice: CameraDevice.front,
+    );
+    return file?.readAsBytes();
+  }
+
+  Future<void> _writePhoto(String value) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final changes = {'photoUrl': value};
+    if (widget.profileWriter != null) {
+      await widget.profileWriter!(uid, changes);
+    } else {
+      await FirestoreService().database
+          .collection('users')
+          .doc(uid)
+          .update(changes);
+    }
+  }
+
+  Future<void> _choosePhoto() async {
+    if (!_loaded || _saving || _savingPhoto) return;
+    final hasCustomPhoto = ProfilePhotoData.isData(_photoUrl);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(sheetContext, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(sheetContext, 'gallery'),
+            ),
+            if (hasCustomPhoto)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: AppColors.error,
+                ),
+                title: const Text(
+                  'Remove Photo',
+                  style: TextStyle(color: AppColors.error),
+                ),
+                onTap: () => Navigator.pop(sheetContext, 'remove'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'remove') return _removePhoto();
+    final Uint8List? bytes;
+    try {
+      bytes = await _pickPhoto(
+        choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+      );
+    } on PlatformException {
+      _snack(
+        choice == 'camera'
+            ? 'Camera access is needed to take a photo. Allow it in Settings.'
+            : 'Photo access is needed to choose a picture. Allow it in Settings.',
+      );
+      return;
+    }
+    if (!mounted || bytes == null) return;
+    final encoded = ProfilePhotoData.encode(bytes);
+    if (encoded == null) {
+      _snack('Choose a JPEG or PNG photo.');
+      return;
+    }
+    if (encoded.length > ProfilePhotoData.maxEncodedLength) {
+      _snack('That photo is too large. Try another one.');
+      return;
+    }
+    await _savePhoto(encoded, 'Profile photo updated.');
+  }
+
+  Future<void> _removePhoto() => _savePhoto('', 'Profile photo removed.');
+
+  Future<void> _savePhoto(String value, String success) async {
+    final previous = _photoUrl;
+    setState(() {
+      _savingPhoto = true;
+      _photoUrl = value;
+    });
+    try {
+      await _writePhoto(value);
+      _snack(success);
+    } catch (_) {
+      if (mounted) setState(() => _photoUrl = previous);
+      _snack('Your photo could not be saved. Please try again.');
+    } finally {
+      if (mounted) setState(() => _savingPhoto = false);
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _save() async {
     if (!_loaded || _saving || !_dirty) return;
     if (_formKey.currentState?.validate() != true) return;
@@ -333,12 +458,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             icon: const Icon(Icons.arrow_back),
           ),
           title: const Text('Edit Profile'),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Image.asset(AppAssets.logo, width: 32, height: 32),
-            ),
-          ],
         ),
         body: SafeArea(
           top: false,
@@ -425,21 +544,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         backgroundColor: AppColors.softGreen,
                         child: ClipOval(
                           child: SizedBox.expand(
-                            child: imageUrl.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      initials,
-                                      style: const TextStyle(
-                                        color: AppColors.primary,
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                            child: _savingPhoto
+                                ? const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
                                     ),
                                   )
-                                : Image.network(
-                                    imageUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => Center(
+                                : ProfilePhoto(
+                                    source: imageUrl,
+                                    fallback: Center(
                                       child: Text(
                                         initials,
                                         style: const TextStyle(
@@ -460,8 +573,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           radius: 18,
                           backgroundColor: AppColors.surface,
                           child: IconButton(
-                            tooltip: 'Photo editing unavailable',
-                            onPressed: null,
+                            tooltip: 'Change profile photo',
+                            onPressed: _saving || _savingPhoto
+                                ? null
+                                : _choosePhoto,
                             icon: const Icon(
                               Icons.camera_alt_outlined,
                               size: 18,
@@ -474,10 +589,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 8),
                 Center(
-                  child: IconButton(
-                    tooltip: 'Photo removal unavailable',
-                    onPressed: null,
-                    icon: const Icon(Icons.delete_outline, size: 19),
+                  child: TextButton(
+                    onPressed: _saving || _savingPhoto ? null : _choosePhoto,
+                    child: Text(
+                      ProfilePhotoData.isData(_photoUrl)
+                          ? 'Change Photo'
+                          : 'Add Photo',
+                    ),
                   ),
                 ),
                 Text(

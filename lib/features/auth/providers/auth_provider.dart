@@ -26,6 +26,15 @@ class AuthProvider extends ChangeNotifier {
   bool rememberMe = false;
   String? error;
   UserModel? user;
+
+  /// Called when an auth screen opens, so a message from another screen
+  /// (e.g. a cancelled Google sign-in) is not shown out of context.
+  void clearError() {
+    if (error == null || busy) return;
+    error = null;
+    notifyListeners();
+  }
+
   String? get firstName {
     final name = user?.name.trim() ?? '';
     return name.isEmpty ? null : name.split(RegExp(r'\s+')).first;

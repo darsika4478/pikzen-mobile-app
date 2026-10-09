@@ -3,7 +3,19 @@ import 'package:flutter/foundation.dart';
 import '../../../models/cart_item_model.dart';
 import '../../../models/product_model.dart';
 
+/// Why a product cannot join the current cart.
+enum CartBlock {
+  /// Pickup orders come from one shop; the cart holds another shop's items.
+  otherShop,
+
+  /// Orders are limited to [CartProvider.maxProducts] different products.
+  tooManyProducts,
+}
+
 class CartProvider extends ChangeNotifier {
+  /// Matches the per-order product limit enforced by Firestore rules.
+  static const maxProducts = 4;
+
   final Map<String, CartItemModel> _items = {};
   String? _owner;
   Map<String, ProductModel>? _catalog;
@@ -47,12 +59,37 @@ class CartProvider extends ChangeNotifier {
     0,
     (sum, item) => sum + item.quantity * item.product.priceMinor,
   );
+
+  /// Shop of the items already in the cart, if any.
+  ProductModel? get _anyItem =>
+      _items.isEmpty ? null : _items.values.first.product;
+  String? get shopName => _anyItem?.shopName;
+
+  CartBlock? blockFor(ProductModel product) {
+    if (_items.containsKey(product.id)) return null;
+    final existing = _anyItem;
+    if (existing != null && existing.shopId != product.shopId) {
+      return CartBlock.otherShop;
+    }
+    if (_items.length >= maxProducts) return CartBlock.tooManyProducts;
+    return null;
+  }
+
+  /// Empties the cart and starts a new one with [product].
+  bool replaceWith(ProductModel product) {
+    _items.clear();
+    final added = add(product);
+    if (!added) notifyListeners();
+    return added;
+  }
+
   bool add(ProductModel product) {
     if (_catalog != null) {
       final latest = _catalog![product.id];
       if (latest == null) return false;
       product = latest;
     }
+    if (blockFor(product) != null) return false;
     final current = quantity(product.id);
     if (product.stock == StockStatus.outOfStock ||
         current >= product.availableQuantity) {

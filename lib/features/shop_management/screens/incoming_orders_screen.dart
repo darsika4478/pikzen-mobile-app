@@ -59,7 +59,7 @@ class _IncomingOrdersScreenState extends State<IncomingOrdersScreen> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 640),
             child: Column(
               children: [
                 Padding(

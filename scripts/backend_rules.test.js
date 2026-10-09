@@ -165,6 +165,11 @@ before(async () => {
     user('other', 'customer', { fullName: string('Other Customer') }),
     user('shop', 'shop', { approvalStatus: string('approved') }),
     user('rival', 'shop', { approvalStatus: string('approved') }),
+    user('admin', 'admin'), user('promoted', 'customer'),
+    user('victim', 'customer', {
+      fullName: string('Demo Customer'), phone: string('+94770000001'),
+    }),
+    user('admin2', 'admin'),
     ...['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9'].map(id => product(id, 5)),
   ]);
   assert.equal(seeded.status, 200, JSON.stringify(seeded.body));
@@ -329,4 +334,114 @@ test('favourites are private to their owner', async () => {
   ]);
   assert.equal(mismatched.status, 403);
   assert.equal((await commit('customer', [remove('users/customer/favourites/p1')])).status, 200);
+});
+
+test('a pickup code must be four digits', async () => {
+  const bad = await commit('customer', [
+    order('code-bad', 'card', ['p6'], { pickupCode: string('12a4') }),
+    reserve('p6', 'code-bad', 3), payment('code-bad', 'card', 45000),
+  ]);
+  assert.equal(bad.status, 403, JSON.stringify(bad.body));
+  const good = await commit('customer', [
+    order('code-ok', 'card', ['p6'], { pickupCode: string('0427') }),
+    reserve('p6', 'code-ok', 3), payment('code-ok', 'card', 45000),
+  ]);
+  assert.equal(good.status, 200, JSON.stringify(good.body));
+});
+
+test('customers check in once, and only after the shop accepts', async () => {
+  const checkIn = () => update('orders/code-ok', {}, ['arrivedAt']);
+  const early = await commit('customer', [checkIn()]);
+  assert.equal(early.status, 403, 'placed orders cannot be checked in');
+  const accepted = await commit('shop', [
+    update('orders/code-ok', { status: string('accepted') }, ['updatedAt', 'acceptedAt']),
+  ]);
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  assert.equal((await commit('other', [checkIn()])).status, 403);
+  const arrived = await commit('customer', [checkIn()]);
+  assert.equal(arrived.status, 200, JSON.stringify(arrived.body));
+  assert.equal((await commit('customer', [checkIn()])).status, 403, 'only once');
+  const forged = await commit('customer', [
+    update('orders/code-ok', { status: string('ready') }, ['arrivedAt']),
+  ]);
+  assert.equal(forged.status, 403);
+});
+
+test('profile photos must be small inline images owned by the user', async () => {
+  const tiny = 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
+  const photo = value => update('users/customer', { photoUrl: string(value) });
+  assert.equal((await commit('customer', [photo(tiny)])).status, 200);
+  assert.equal((await commit('other', [photo(tiny)])).status, 403, 'not the owner');
+  assert.equal((await commit('customer', [photo('https://evil.example/x.png')])).status, 403);
+  assert.equal((await commit('customer', [photo('data:image/jpeg;base64,' + 'A'.repeat(150000))])).status, 403);
+  assert.equal((await commit('customer', [photo('')])).status, 200, 'removal');
+});
+
+test('admins suspend and reactivate accounts; suspended customers cannot order', async () => {
+  const status = value => update('users/victim', { accountStatus: string(value) });
+  assert.equal((await commit('victim', [status('active')])).status, 403, 'not self-service');
+  assert.equal((await commit('customer', [status('suspended')])).status, 403, 'not by customers');
+  assert.equal((await commit('admin', [status('suspended')])).status, 200);
+  const victimOrder = () => {
+    const write = order('victim-order', 'card', ['p8']);
+    write.update.fields.customerId = string('victim');
+    const receipt = payment('victim-order', 'card', 45000);
+    receipt.update.fields.customerId = string('victim');
+    return [write, reserve('p8', 'victim-order', 3), receipt];
+  };
+  assert.equal((await commit('victim', victimOrder())).status, 403, 'suspended');
+  assert.equal((await commit('admin', [status('active')])).status, 200);
+  const placed = await commit('victim', victimOrder());
+  assert.equal(placed.status, 200, JSON.stringify(placed.body));
+});
+
+test('admins cannot suspend themselves or other admins', async () => {
+  const suspend = id => update(`users/${id}`, { accountStatus: string('suspended') });
+  assert.equal((await commit('admin', [suspend('admin')])).status, 403);
+  assert.equal((await commit('admin', [suspend('admin2')])).status, 403);
+});
+
+test('admins move accounts between customer and approved shop', async () => {
+  const toShop = update('users/promoted', {
+    role: string('shop'), approvalStatus: string('approved'),
+  });
+  assert.equal((await commit('customer', [toShop])).status, 403, 'not by customers');
+  assert.equal((await commit('admin', [toShop])).status, 200);
+  const toAdmin = update('users/promoted', { role: string('admin') });
+  assert.equal((await commit('admin', [toAdmin])).status, 403, 'never grants admin');
+  const back = {
+    update: { name: name('users/promoted'), fields: { role: string('customer') } },
+    updateMask: { fieldPaths: ['role', 'approvalStatus'] },
+    currentDocument: { exists: true },
+  };
+  assert.equal((await commit('admin', [back])).status, 200);
+});
+
+test('shops and customers save only their own notification preference keys', async () => {
+  const prefs = (id, fields) => update(`users/${id}`, {
+    preferences: { mapValue: { fields } },
+  });
+  const shopPrefs = prefs('shop', {
+    newOrderAlerts: boolean(false), lowStockAlerts: boolean(true),
+  });
+  shopPrefs.update.fields.fullName = string('Test Shop Owner');
+  shopPrefs.updateMask.fieldPaths.push('fullName');
+  const saved = await commit('shop', [shopPrefs]);
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal((await commit('customer', [prefs('customer', {
+    newOrderAlerts: boolean(false),
+  })])).status, 403, 'shop keys are not customer keys');
+  assert.equal((await commit('customer', [prefs('customer', {
+    pushNotifications: boolean(true),
+  })])).status, 200);
+});
+
+test('product photos must be assets, https or small inline images', async () => {
+  const photo = value => update('products/p9', { imageUrl: string(value) }, ['updatedAt']);
+  const tiny = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64');
+  assert.equal((await commit('shop', [photo(tiny)])).status, 200);
+  assert.equal((await commit('shop', [photo('https://example.com/a.jpg')])).status, 200);
+  assert.equal((await commit('shop', [photo('http://example.com/a.jpg')])).status, 403);
+  assert.equal((await commit('shop', [photo('data:image/png;base64,' + 'A'.repeat(400000))])).status, 403);
+  assert.equal((await commit('rival', [photo(tiny)])).status, 403, 'not the owner');
 });

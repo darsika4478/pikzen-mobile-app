@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:pikzen/features/auth/screens/signup_screen.dart';
 import 'package:pikzen/core/router/app_router.dart';
 import 'package:pikzen/core/services/auth_service.dart';
 import 'package:pikzen/core/services/firestore_service.dart';
@@ -283,10 +284,12 @@ void main() {
   for (final role in ['customer', 'shop']) {
     testWidgets('Signup selector and completion for $role', (tester) async {
       final auth = await mount(tester, '/signup');
-      expect(find.byType(ChoiceChip), findsNWidgets(2));
+      expect(find.byType(SignUpRoleCard), findsNWidgets(2));
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Customer'))
+            .widget<SignUpRoleCard>(
+              find.widgetWithText(SignUpRoleCard, 'Customer'),
+            )
             .selected,
         isTrue,
       );
@@ -296,7 +299,9 @@ void main() {
       await tester.pump();
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Shop Owner'))
+            .widget<SignUpRoleCard>(
+              find.widgetWithText(SignUpRoleCard, 'Shop Owner'),
+            )
             .selected,
         isTrue,
       );

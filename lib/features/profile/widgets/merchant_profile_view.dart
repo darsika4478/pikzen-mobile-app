@@ -61,7 +61,7 @@ class MerchantProfileView extends StatelessWidget {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 640),
             child: Column(
               children: [
                 Padding(
@@ -88,7 +88,7 @@ class MerchantProfileView extends StatelessWidget {
                       _headerButton(
                         Icons.settings_outlined,
                         'Profile settings',
-                        () => _message(context, 'Settings'),
+                        () => context.pushNamed('shop-settings'),
                       ),
                     ],
                   ),
@@ -124,7 +124,9 @@ class MerchantProfileView extends StatelessWidget {
                                     trailing: StreamBuilder(
                                       stream: orderService.forShop(),
                                       builder: (context, snapshot) => _ProfilePill(
-                                        snapshot.hasError ? 'Unavailable' : snapshot.hasData
+                                        snapshot.hasError
+                                            ? 'Unavailable'
+                                            : snapshot.hasData
                                             ? '${snapshot.data!.where((order) => order.status == 'placed').length} New'
                                             : 'Loading',
                                       ),
@@ -140,7 +142,9 @@ class MerchantProfileView extends StatelessWidget {
                                     trailing: StreamBuilder(
                                       stream: productService.shopProducts(),
                                       builder: (context, snapshot) => Text(
-                                        snapshot.hasError ? 'Unavailable' : snapshot.hasData
+                                        snapshot.hasError
+                                            ? 'Unavailable'
+                                            : snapshot.hasData
                                             ? '${snapshot.data!.where((product) => product.isActive).length} Items'
                                             : 'Loading',
                                         style: const TextStyle(
@@ -155,28 +159,22 @@ class MerchantProfileView extends StatelessWidget {
                                   MerchantProfileMenuRow(
                                     icon: Icons.lock_outline_rounded,
                                     label: 'Change Password',
-                                    onTap: () => _message(
-                                      context,
-                                      'Change Password is unavailable for shop accounts.',
-                                    ),
+                                    onTap: () =>
+                                        context.pushNamed('change-password'),
                                   ),
                                   MerchantProfileMenuRow(
                                     icon: Icons.notifications_none_rounded,
                                     label: 'Notifications',
                                     color: AppColors.warning,
                                     tint: AppColors.lightOrange,
-                                    onTap: () => _message(
-                                      context,
-                                      'Shop notifications are not available yet.',
-                                    ),
+                                    onTap: () =>
+                                        context.pushNamed('shop-notifications'),
                                   ),
                                   MerchantProfileMenuRow(
                                     icon: Icons.tune_rounded,
                                     label: 'Settings',
-                                    onTap: () => _message(
-                                      context,
-                                      'Shop settings are not available yet.',
-                                    ),
+                                    onTap: () =>
+                                        context.pushNamed('shop-settings'),
                                   ),
                                 ],
                               ),
