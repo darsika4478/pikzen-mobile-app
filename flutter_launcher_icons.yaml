@@ -1,0 +1,18 @@
+# Generates the PikZen launcher icons: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icons/app_icon.png"
+  android: "ic_launcher"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    background_color: "#FFFFFF"
+    theme_color: "#2E9B45"
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    icon_size: 256

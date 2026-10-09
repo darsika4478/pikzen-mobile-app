@@ -1,0 +1,608 @@
+// Prototype Spark-plan rules for the users (+favourites), products, orders
+// (+messages), payments and notifications collections. Payments are simulated
+// demo receipts only. Client transactions reserve and restore stock;
+// they are suitable for the coursework demo, not a trusted payment backend.
+// Assumed data: users/{uid} has role and optional approvalStatus;
+// products/{id} has shopId, priceMinor, stockQuantity, and optional isActive;
+// orders/{id} has customerId, shopId, up to four item snapshots,
+// stockQuantities, stockReserved, stockRestored, and lifecycle timestamps.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function admin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    // Shared catalog: shopId is the approved shop owner's Auth UID.
+    match /products/{productId} {
+      function approvedOwner(shopId) {
+        return request.auth != null && request.auth.uid == shopId
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'shop'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('accountStatus', 'active') != 'suspended';
+      }
+      function validProduct() {
+        let data = request.resource.data;
+        return data.name is string && data.category is string
+          && data.priceMinor is int && data.priceMinor > 0
+          && data.stockQuantity is int && data.stockQuantity >= 0
+          && (!('lowStockThreshold' in data) || (data.lowStockThreshold is int && data.lowStockThreshold >= 0))
+          && (!('isActive' in data) || data.isActive is bool);
+      }
+      // Photo: bundled asset, https URL, or a small inline JPEG/PNG. Only
+      // checked on owner edits, so stock reservations stay within the
+      // per-request expression limit.
+      function validProductImage() {
+        let data = request.resource.data;
+        return !('imageUrl' in data) || data.imageUrl == null || data.imageUrl == ''
+          || (data.imageUrl is string && data.imageUrl.size() <= 400000
+            && (data.imageUrl.matches('^(assets/|https://).*')
+              || data.imageUrl.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$')));
+      }
+      function validStockMarker(kind) {
+        return request.resource.data.stockChangeOrderId is string
+          && request.resource.data.stockChangeOrderId.size() > 0
+          && request.resource.data.stockChangeOrderId.size() <= 120
+          && request.resource.data.stockChangeKind == kind
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'stockQuantity', 'updatedAt', 'stockChangeOrderId', 'stockChangeKind'
+          ])
+          && request.resource.data.updatedAt == request.time;
+      }
+      function customerCanReserveStock() {
+        let orderId = request.resource.data.stockChangeOrderId;
+        let orderPath = /databases/$(database)/documents/orders/$(orderId);
+        let order = getAfter(orderPath).data;
+        // Suspended customers cannot reserve stock, and every order needs its
+        // reservations, so they cannot place orders. Checked here rather than
+        // on the order, whose rule is already near the expression limit.
+        return customerAccount() && notSuspended() && validStockMarker('reserved')
+          && !exists(orderPath)
+          && resource.data.get('isActive', true) == true
+          && order.customerId == request.auth.uid
+          && order.shopId == resource.data.shopId
+          && order.status == 'placed'
+          && order.stockReserved == true && order.stockRestored == false
+          && order.stockQuantities.get(productId, 0) is int
+          && order.stockQuantities.get(productId, 0) > 0
+          && request.resource.data.stockQuantity
+            == resource.data.stockQuantity - order.stockQuantities[productId];
+      }
+      function actorCanRestoreStock() {
+        let orderId = request.resource.data.stockChangeOrderId;
+        let orderPath = /databases/$(database)/documents/orders/$(orderId);
+        let before = get(orderPath).data;
+        let after = getAfter(orderPath).data;
+        return validStockMarker('restored')
+          && ((customerAccount() && before.customerId == request.auth.uid)
+            || (approvedShop() && before.shopId == request.auth.uid))
+          && before.shopId == resource.data.shopId
+          && before.stockReserved == true && before.stockRestored == false
+          && after.status == 'cancelled' && after.stockRestored == true
+          && after.customerId == before.customerId
+          && after.shopId == before.shopId
+          && before.stockQuantities.get(productId, 0) is int
+          && before.stockQuantities.get(productId, 0) > 0
+          && request.resource.data.stockQuantity
+            == resource.data.stockQuantity + before.stockQuantities[productId];
+      }
+      allow read: if request.auth != null;
+      allow create: if approvedOwner(request.resource.data.shopId) && validProduct()
+        && validProductImage()
+        && request.resource.data.isActive == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if validProduct() && (
+        customerCanReserveStock() || actorCanRestoreStock()
+        || (approvedOwner(resource.data.shopId)
+          && request.resource.data.shopId == resource.data.shopId
+          && validProductImage()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'category', 'priceMinor', 'stockQuantity', 'lowStockThreshold',
+            'description', 'unit', 'imageUrl', 'isActive', 'updatedAt'
+          ])
+          && request.resource.data.updatedAt == request.time
+          && !(resource.data.get('isActive', true) == false
+            && request.resource.data.get('isActive', true) == true)));
+      allow delete: if false;
+    }
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function notSuspended() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('accountStatus', 'active') != 'suspended';
+    }
+
+    function customerAccount() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+    }
+
+    function approvedShop() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'shop'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+    }
+
+    function validPaymentMethod(method) {
+      return method in ['card', 'ewallet', 'onlineBanking', 'cashOnPickup'];
+    }
+
+    function validOrderStatus(status) {
+      return status in ['placed', 'accepted', 'preparing', 'ready', 'collected', 'cancelled'];
+    }
+
+    function validOrderWrite() {
+      return request.resource.data.customerId == resource.data.customerId
+        && request.resource.data.shopId == resource.data.shopId
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.status in [
+          'placed', 'pending', 'accepted', 'confirmed', 'preparing',
+          'ready', 'collected', 'completed', 'cancelled'
+        ];
+    }
+
+      function validReservedLine(order, index) {
+        let line = order.items[index];
+        let product = getAfter(/databases/$(database)/documents/products/$(line.productId)).data;
+        return line is map
+          && line.productId is string && line.productId.size() > 0
+          && line.quantity is int && line.quantity > 0 && line.quantity <= 1000
+          && line.unitPriceMinor is int && line.unitPriceMinor > 0
+          && line.lineTotalMinor == line.unitPriceMinor * line.quantity
+          && product.shopId == order.shopId
+          && product.priceMinor == line.unitPriceMinor
+          && product.stockChangeOrderId == order.id
+        && product.stockChangeKind == 'reserved'
+        && order.stockQuantities.get(line.productId, 0) == line.quantity;
+    }
+
+    function validRestoredLine(order, index) {
+      let line = order.items[index];
+      let product = getAfter(/databases/$(database)/documents/products/$(line.productId)).data;
+      return product.shopId == order.shopId
+        && product.stockChangeOrderId == order.id
+        && product.stockChangeKind == 'restored';
+    }
+
+    function validOrderLineAt(order, index, restoring) {
+      return index >= order.items.size()
+        || (restoring ? validRestoredLine(order, index)
+          : validReservedLine(order, index));
+    }
+
+    function allOrderLinesValid(order, restoring) {
+      return order.items is list && order.items.size() > 0
+        && order.items.size() <= 4
+        && validOrderLineAt(order, 0, restoring)
+        && validOrderLineAt(order, 1, restoring)
+        && validOrderLineAt(order, 2, restoring)
+        && validOrderLineAt(order, 3, restoring);
+    }
+
+    function orderLineTotal(order, index) {
+      return index >= order.items.size() ? 0 : order.items[index].lineTotalMinor;
+    }
+
+    function validOrderTotal(order) {
+      return order.totalMinor ==
+        orderLineTotal(order, 0) + orderLineTotal(order, 1)
+        + orderLineTotal(order, 2) + orderLineTotal(order, 3);
+    }
+
+    function validDemoOrderCreate(orderId) {
+      let data = request.resource.data;
+      return customerAccount()
+        && data.keys().hasOnly([
+          'id', 'customerId', 'shopId', 'shopName', 'items',
+          'subtotalMinor', 'totalMinor', 'currencyCode', 'paymentMethod',
+          'paymentStatus', 'status', 'pickupAt', 'replacementPreference',
+          'stockReserved', 'stockRestored', 'stockQuantities',
+          'createdAt', 'updatedAt', 'acceptedAt', 'preparingAt', 'readyAt',
+          'collectedAt', 'cancelledAt', 'completedAt',
+          'customerName', 'customerPhone', 'pickupCode'
+        ])
+        && data.keys().hasAll([
+          'id', 'customerId', 'shopId', 'shopName', 'items',
+          'subtotalMinor', 'totalMinor', 'currencyCode', 'paymentMethod',
+          'paymentStatus', 'status', 'pickupAt', 'replacementPreference',
+          'stockReserved', 'stockRestored', 'stockQuantities',
+          'createdAt', 'updatedAt'
+        ])
+        && data.id == orderId && data.customerId == request.auth.uid
+        // Optional contact snapshot so the shop can identify the customer
+        // without reading the private profile; it must match that profile.
+        && (!('customerName' in data) || data.customerName
+          == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('fullName', ''))
+        && (!('customerPhone' in data) || data.customerPhone
+          == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('phone', null))
+        && approvedOrderShop(data.shopId)
+        // Handover code the customer shows at pickup.
+        && (!('pickupCode' in data)
+          || (data.pickupCode is string && data.pickupCode.matches('^[0-9]{4}$')))
+        && data.shopName is string && data.shopName.size() <= 120
+        && data.items is list && data.items.size() > 0
+        && data.items.size() <= 4
+        && data.stockQuantities is map
+        && data.stockQuantities.keys().size() == data.items.size()
+        && data.subtotalMinor is int && data.subtotalMinor > 0
+        && data.totalMinor == data.subtotalMinor
+        && data.currencyCode is string && data.currencyCode.size() == 3
+        && validPaymentMethod(data.paymentMethod)
+        && ((data.paymentMethod == 'cashOnPickup'
+              && data.paymentStatus == 'unpaid')
+          || (data.paymentMethod in ['card', 'ewallet', 'onlineBanking']
+              && data.paymentStatus == 'demo'))
+        && data.status == 'placed'
+        && data.pickupAt is timestamp && data.pickupAt > request.time
+        && data.replacementPreference in [
+          'allowReplacement', 'contactMe', 'noReplacement'
+        ]
+        && data.stockReserved == true && data.stockRestored == false
+        && allOrderLinesValid(data, false) && validOrderTotal(data)
+        && data.createdAt == request.time && data.updatedAt == request.time;
+    }
+
+    function customerCanCancelOrder() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return customerAccount() && validOrderWrite()
+        && before.customerId == request.auth.uid
+        && before.status in ['placed', 'pending', 'accepted', 'confirmed', 'preparing']
+        && before.get('stockRestored', false) == false
+        && after.status == 'cancelled'
+        && after.diff(before).affectedKeys().hasOnly([
+          'status', 'updatedAt', 'cancelledAt', 'cancellationReason',
+          'cancellationNote', 'stockRestored'
+        ])
+        && after.cancellationReason in [
+          'changedMind', 'wrongPickupTime', 'foundElsewhere', 'other'
+        ]
+        && (after.cancellationNote == null
+          || (after.cancellationNote is string
+            && after.cancellationNote.size() <= 500))
+        && after.get('stockRestored', false) == before.get('stockReserved', false)
+        && (before.get('stockReserved', false) != true
+          || allOrderLinesValid(before, true))
+        && after.updatedAt == request.time && after.cancelledAt == request.time;
+    }
+
+    function shopCanRejectOrder() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return approvedShop() && validOrderWrite()
+        && before.shopId == request.auth.uid && before.status == 'placed'
+        && before.get('stockRestored', false) == false
+        && after.status == 'cancelled'
+        && after.diff(before).affectedKeys().hasOnly([
+          'status', 'updatedAt', 'cancelledAt', 'cancellationReason',
+          'cancellationNote', 'stockRestored'
+        ])
+        && after.cancellationReason == 'shopRejected'
+        && after.cancellationNote == null
+        && after.get('stockRestored', false) == before.get('stockReserved', false)
+        && (before.get('stockReserved', false) != true
+          || allOrderLinesValid(before, true))
+        && after.updatedAt == request.time && after.cancelledAt == request.time;
+    }
+
+    function approvedOrderShop(shopId) {
+      return shopId is string && shopId.size() > 0
+        && get(/databases/$(database)/documents/users/$(shopId)).data.role == 'shop'
+        && get(/databases/$(database)/documents/users/$(shopId)).data.approvalStatus == 'approved';
+    }
+
+    function customerCanRecordView() {
+      let changes = request.resource.data.diff(resource.data).affectedKeys();
+      return customerAccount()
+        && resource.data.customerId == request.auth.uid
+        && changes.hasOnly([
+          'paymentSuccessViewedAt', 'confirmationViewedAt', 'trackingViewedAt',
+          'ordersListViewedAt', 'orderDetailsViewedAt'
+        ])
+        && changes.size() == 1
+        && (!changes.hasAny(['paymentSuccessViewedAt'])
+          || request.resource.data.paymentSuccessViewedAt == request.time)
+        && (!changes.hasAny(['confirmationViewedAt'])
+          || request.resource.data.confirmationViewedAt == request.time)
+        && (!changes.hasAny(['trackingViewedAt'])
+          || request.resource.data.trackingViewedAt == request.time)
+        && (!changes.hasAny(['ordersListViewedAt'])
+          || request.resource.data.ordersListViewedAt == request.time)
+        && (!changes.hasAny(['orderDetailsViewedAt'])
+          || request.resource.data.orderDetailsViewedAt == request.time);
+    }
+
+    // "I've arrived": the customer checks in once while the order is open.
+    function customerCanCheckIn() {
+      return customerAccount()
+        && resource.data.customerId == request.auth.uid
+        && resource.data.status in ['accepted', 'preparing', 'ready']
+        && resource.data.get('arrivedAt', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['arrivedAt'])
+        && request.resource.data.arrivedAt == request.time;
+    }
+
+    function shopCanAdvanceOrder() {
+      let before = resource.data.status == null ? 'placed' : resource.data.status;
+      let after = request.resource.data.status;
+      let changes = request.resource.data.diff(resource.data).affectedKeys();
+      return approvedShop()
+        && resource.data.shopId == request.auth.uid
+        && validOrderStatus(after)
+        && changes.hasOnly([
+          'status', 'updatedAt', 'acceptedAt', 'preparingAt', 'readyAt',
+          'collectedAt', 'completedAt', 'paymentStatus'
+        ])
+        // Cash on pickup is settled when the customer collects the order.
+        && (!changes.hasAny(['paymentStatus'])
+          || (after == 'collected'
+            && resource.data.paymentMethod == 'cashOnPickup'
+            && request.resource.data.paymentStatus == 'paid'))
+        && request.resource.data.updatedAt == request.time
+        && ((before in ['placed', 'pending'] && after == 'accepted'
+              && request.resource.data.acceptedAt == request.time)
+          || (before in ['accepted', 'confirmed'] && after == 'preparing'
+              && request.resource.data.preparingAt == request.time)
+          || (before == 'preparing' && after == 'ready'
+              && request.resource.data.readyAt == request.time)
+          || (before == 'ready' && after == 'collected'
+              && request.resource.data.collectedAt == request.time
+              && request.resource.data.completedAt == request.time));
+    }
+
+    match /users/{uid} {
+      function owner() { return signedIn() && request.auth.uid == uid; }
+      function validCustomerPreferenceUpdate() {
+        let after = request.resource.data.get('preferences', {});
+        let before = resource.data.get('preferences', {});
+        let customerKeys = ['readyForPickupSms', 'paperlessInvoices', 'pushNotifications'];
+        let shopKeys = ['pushNotifications', 'newOrderAlerts', 'lowStockAlerts', 'customerMessageAlerts'];
+        let keys = resource.data.role == 'shop' ? shopKeys : customerKeys;
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['preferences'])
+          || (resource.data.role in ['customer', 'shop']
+            && after is map
+            && after.diff(before).affectedKeys().hasOnly(keys)
+            && after.get('readyForPickupSms', false) is bool
+            && after.get('paperlessInvoices', false) is bool
+            && after.get('pushNotifications', false) is bool
+            && after.get('newOrderAlerts', true) is bool
+            && after.get('lowStockAlerts', true) is bool
+            && after.get('customerMessageAlerts', true) is bool);
+      }
+      function publicRole() {
+        let data = request.resource.data;
+        return (data.role == 'customer' && !('approvalStatus' in data))
+          || (data.role == 'shop' && data.approvalStatus == 'pending');
+      }
+      allow get: if owner() || admin();
+      allow list: if admin();
+      allow create: if owner()
+        && request.resource.data.keys().hasOnly(['uid', 'fullName', 'email', 'phone', 'role', 'createdAt', 'approvalStatus'])
+        && request.resource.data.keys().hasAll(['uid', 'fullName', 'email', 'phone', 'role', 'createdAt'])
+        && request.resource.data.uid == uid
+        && publicRole()
+        && request.resource.data.fullName is string
+        && request.resource.data.email == request.auth.token.email
+        && (request.resource.data.phone == null || request.resource.data.phone is string)
+        && request.resource.data.createdAt == request.time;
+      allow update: if (owner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fullName', 'phone', 'preferences', 'shopName', 'storeAddress',
+          'photoUrl'
+        ])
+        // Profile photo: empty, or a small JPEG/PNG stored inline (no Storage).
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['photoUrl'])
+          || (request.resource.data.photoUrl is string
+            && request.resource.data.photoUrl.size() <= 150000
+            && (request.resource.data.photoUrl == ''
+              || request.resource.data.photoUrl.matches('^data:image/(jpeg|png);base64,[A-Za-z0-9+/=]+$'))))
+        // get() so older profiles missing these fields can still be edited.
+        && request.resource.data.get('fullName', '') is string
+        && (request.resource.data.get('phone', null) == null || request.resource.data.phone is string)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['shopName', 'storeAddress'])
+          || (resource.data.role == 'shop'
+            && resource.data.approvalStatus == 'approved'
+            && request.resource.data.get('shopName', '') is string
+            && request.resource.data.get('storeAddress', '') is string
+            && request.resource.data.get('shopName', '').size() <= 120
+            && request.resource.data.get('storeAddress', '').size() <= 500))
+        && validCustomerPreferenceUpdate())
+        || (admin()
+          && resource.data.role == 'shop'
+          && resource.data.approvalStatus == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus'])
+          && request.resource.data.approvalStatus in ['approved', 'rejected'])
+        || adminManagesAccount();
+
+      // Admins suspend or reactivate non-admin accounts (never their own),
+      // and move accounts between customer and approved shop.
+      function adminManagesAccount() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        let data = request.resource.data;
+        return admin()
+          && uid != request.auth.uid
+          && resource.data.role in ['customer', 'shop']
+          && changed.hasOnly(['accountStatus', 'role', 'approvalStatus'])
+          && data.get('accountStatus', 'active') in ['active', 'suspended']
+          && ((data.role == 'customer' && !('approvalStatus' in data))
+            || (data.role == 'shop' && data.get('approvalStatus', '') in ['approved', 'pending', 'rejected']))
+          && (!changed.hasAny(['role']) || !changed.hasAny(['accountStatus']))
+          // Approval decisions go through the review flow; here the status
+          // only changes as part of a role move.
+          && (!changed.hasAny(['approvalStatus']) || changed.hasAny(['role']));
+      }
+      allow delete: if false;
+
+      // Saved products; one document per product ID, private to the owner.
+      match /favourites/{productId} {
+        allow get, list, delete: if owner();
+        allow create, update: if owner()
+          && request.resource.data.keys().hasOnly(['productId', 'createdAt'])
+          && request.resource.data.productId == productId
+          && request.resource.data.createdAt == request.time;
+      }
+    }
+
+    match /orders/{orderId} {
+      allow create: if validDemoOrderCreate(orderId);
+
+      allow get, list: if (customerAccount() && resource.data.customerId == request.auth.uid)
+        || (approvedShop() && resource.data.shopId == request.auth.uid);
+      allow update: if customerCanCancelOrder() || shopCanRejectOrder()
+        || customerCanRecordView() || shopCanAdvanceOrder()
+        || customerCanCheckIn();
+      allow delete: if false;
+
+      // Order chat between its customer and its shop. Messages are immutable.
+      match /messages/{messageId} {
+        function chatOrder() {
+          return get(/databases/$(database)/documents/orders/$(orderId)).data;
+        }
+        function orderParty() {
+          return signedIn() && (chatOrder().customerId == request.auth.uid
+            || chatOrder().shopId == request.auth.uid);
+        }
+        allow get, list: if orderParty();
+        allow create: if orderParty()
+          && request.resource.data.keys().hasOnly([
+            'id', 'senderId', 'senderRole', 'text', 'createdAt'
+          ])
+          && request.resource.data.id == messageId
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderRole
+            == (chatOrder().shopId == request.auth.uid ? 'shop' : 'customer')
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // Simulated payment receipts. Nothing here touches a real payment provider;
+    // card payments keep only the last four digits of the dummy card number.
+    match /payments/{paymentId} {
+      function validDemoPaymentCreate() {
+        let data = request.resource.data;
+        let orderPath = /databases/$(database)/documents/orders/$(paymentId);
+        let order = getAfter(orderPath).data;
+        return customerAccount()
+          && !exists(orderPath)
+          && data.keys().hasOnly([
+            'id', 'orderId', 'customerId', 'shopId', 'method', 'provider',
+            'cardLast4', 'amountMinor', 'currencyCode', 'status', 'reference',
+            'isDemo', 'createdAt'
+          ])
+          && data.keys().hasAll([
+            'id', 'orderId', 'customerId', 'shopId', 'method', 'amountMinor',
+            'currencyCode', 'status', 'reference', 'isDemo', 'createdAt'
+          ])
+          && data.id == paymentId && data.orderId == paymentId
+          && data.customerId == request.auth.uid
+          && order.customerId == request.auth.uid
+          && data.shopId == order.shopId
+          && data.method == order.paymentMethod
+          && data.amountMinor == order.totalMinor
+          && data.currencyCode == order.currencyCode
+          && data.status == (data.method == 'cashOnPickup' ? 'pending' : 'demo_paid')
+          && (data.get('provider', null) == null
+            || (data.provider is string && data.provider.size() <= 60))
+          && (data.get('cardLast4', null) == null
+            || (data.method == 'card' && data.cardLast4 is string
+              && data.cardLast4.matches('^[0-9]{4}$')))
+          && data.reference is string && data.reference.size() <= 40
+          && data.isDemo == true
+          && data.createdAt == request.time;
+      }
+      function shopCanSettleCash() {
+        let order = getAfter(/databases/$(database)/documents/orders/$(paymentId)).data;
+        return approvedShop()
+          && resource.data.shopId == request.auth.uid
+          && resource.data.method == 'cashOnPickup'
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt'])
+          && request.resource.data.status == 'paid'
+          && request.resource.data.paidAt == request.time
+          && order.status == 'collected' && order.paymentStatus == 'paid';
+      }
+      // A missing receipt (legacy order) may be probed; it reveals nothing.
+      allow get: if signedIn() && (resource == null
+        || resource.data.customerId == request.auth.uid
+        || resource.data.shopId == request.auth.uid);
+      allow list: if signedIn()
+        && (resource.data.customerId == request.auth.uid
+          || resource.data.shopId == request.auth.uid);
+      allow create: if validDemoPaymentCreate();
+      allow update: if shopCanSettleCash();
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      function notificationBelongsToCustomer() {
+        return customerAccount() && resource.data.userId == request.auth.uid;
+      }
+
+      function validShopOrderEvent() {
+        let notification = request.resource.data;
+        let orderPath = /databases/$(database)/documents/orders/$(notification.orderId);
+        let orderAfter = getAfter(orderPath).data;
+        return approvedShop()
+          && notification.keys().hasOnly([
+            'id', 'userId', 'type', 'title', 'message', 'orderId', 'productId',
+            'createdAt', 'isRead'
+          ])
+          && notification.keys().hasAll([
+            'id', 'userId', 'type', 'title', 'message', 'orderId', 'createdAt', 'isRead'
+          ])
+          && notification.id == notificationId
+          && notification.userId == orderAfter.customerId
+          && orderAfter.shopId == request.auth.uid
+          && notification.createdAt == request.time
+          && notification.isRead == false
+          && notification.productId == null
+          && ((notification.type == 'ORDER_ACCEPTED'
+                && notificationId == notification.orderId + '_ORDER_ACCEPTED'
+                && orderAfter.status == 'accepted')
+            || (notification.type == 'ORDER_READY'
+                && notificationId == notification.orderId + '_ORDER_READY'
+                && orderAfter.status == 'ready')
+            || (notification.type == 'ORDER_REJECTED'
+                && notificationId == notification.orderId + '_ORDER_REJECTED'
+                && orderAfter.status == 'cancelled'
+                && orderAfter.cancellationReason == 'shopRejected')
+            || shopMessageEvent(notification));
+      }
+
+      // A shop chat message notifies the customer once; the notification ID
+      // is the new message's ID, and both are written in the same batch.
+      function shopMessageEvent(notification) {
+        let messagePath = /databases/$(database)/documents/orders/$(notification.orderId)/messages/$(notificationId);
+        let message = getAfter(messagePath).data;
+        return notification.type == 'SHOP_MESSAGE'
+          && !exists(messagePath)
+          && message.senderId == request.auth.uid
+          && message.senderRole == 'shop'
+          && notification.message is string
+          && notification.message.size() <= 1100;
+      }
+
+      // Shops check inside their status transaction whether an order event
+      // was already sent, so they may read missing or own-order events.
+      function shopOwnsNotificationOrder() {
+        return approvedShop() && (resource == null
+          || get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.shopId
+            == request.auth.uid);
+      }
+
+      allow get: if notificationBelongsToCustomer() || shopOwnsNotificationOrder();
+      allow list: if notificationBelongsToCustomer();
+      allow create: if validShopOrderEvent();
+      allow update: if notificationBelongsToCustomer()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead == true;
+      allow delete: if false;
+    }
+  }
+}
